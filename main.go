@@ -5,33 +5,9 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"regexp"
+	"path/filepath"
 	"strings"
 )
-
-func matchByte(expr string, c byte) bool {
-	hasMatch, _ := regexp.Match(expr, []byte{c})
-	return hasMatch
-}
-
-func matchBytes(expr string, b []byte) bool {
-	hasMatch, _ := regexp.Match(expr, b)
-	return hasMatch
-}
-
-func matchString(expr, str string) bool {
-	hasMatch, _ := regexp.MatchString(expr, str)
-	return hasMatch
-}
-
-func contains(arr []byte, c byte) bool {
-	for _, b := range arr {
-		if b == c {
-			return true
-		}
-	}
-	return false
-}
 
 func containsStr(arr []string, c string) bool {
 	for _, b := range arr {
@@ -40,19 +16,6 @@ func containsStr(arr []string, c string) bool {
 		}
 	}
 	return false
-}
-
-func containsInt(arr []int, c int) bool {
-	for _, b := range arr {
-		if b == c {
-			return true
-		}
-	}
-	return false
-}
-
-func errorInvalidToken(c byte) {
-	panic(fmt.Errorf("Error: invalid token %c", c))
 }
 
 func trimJsString(jsString string) string {
@@ -87,503 +50,318 @@ func resolveImportPath(path, currentFileName string) string {
 	return result
 }
 
-func getExtension(fileName string) string {
-	parts := strings.Split(fileName, ".")
+func getExtension(resolvedImportPath string) string {
+	parts := strings.Split(resolvedImportPath, ".")
 	if len(parts) > 1 {
 		return parts[len(parts)-1]
 	}
 	return "js"
 }
 
-func formatImportPath(fileName string) string {
-	newName := strings.Replace(fileName, "/", "_", -1)
+func formatImportPath(resolvedImportPath string) string {
+	newName := strings.Replace(resolvedImportPath, "/", "_", -1)
 	newName = strings.Replace(newName, ".", "_", -1)
 	return newName
 }
 
-func getLexemes(src []byte) [][]byte {
-	special := "\\{|\\}|\\[|\\]|\\(|\\)|\\,|\\?"
-	operators := "\\+|\\-|\\=|\\.|\\>|\\<|\\/|\\*|\\%|\\||\\&|\\:|\\!"
-	letters := "[A-Za-z_@$]"
-	stringParens := "\\'|\"|\\`"
+func isKeyword(t token) bool {
+	_, ok := keywords[t.lexeme]
+	return ok && t.tType != tNAME
+}
 
-	state := "sNone"
+type jsImportInfo struct {
+	exportObjName string
+	resolvedPath  string
+	def           string
+	vars          []string
+}
 
-	lexemes := make([][]byte, 0)
-	lastLexeme := make([]byte, 0)
+type jsExportInfo struct {
+	def  []token
+	vars []token
+}
+
+func transformIntoModule(tokens []token, resolvedPath string) ([]token, []jsImportInfo) {
+	result := make([]token, 0, len(tokens)+128)
+	imports := make([]jsImportInfo, 0)
+
+	if len(tokens) == 0 {
+		return result, imports
+	}
+
+	fileExports := jsExportInfo{}
 
 	i := 0
-	var c byte
+	t := tokens[i]
+
+	write := func(tType tokenType, lexeme string) {
+		if tType == tNAME {
+			// check if imported variable
+			for _, imp := range imports {
+				ext := getExtension(imp.resolvedPath)
+				if ext != "js" {
+					continue
+				}
+				if imp.def == lexeme {
+					result = append(result, token{tNAME, imp.exportObjName})
+					result = append(result, token{tDOT, "."})
+					result = append(result, token{tNAME, "default"})
+					return
+				}
+				for _, importVar := range imp.vars {
+					if importVar == lexeme {
+						result = append(result, token{tNAME, imp.exportObjName})
+						result = append(result, token{tDOT, "."})
+						result = append(result, token{tNAME, lexeme})
+						return
+					}
+				}
+			}
+		}
+		result = append(result, token{tType, lexeme})
+	}
 
 	eat := func() {
-		lastLexeme = append(lastLexeme, c)
+		write(t.tType, t.lexeme)
 		i++
+		if i < len(tokens) {
+			t = tokens[i]
+		}
 	}
 
 	skip := func() {
 		i++
-	}
-
-	change := func(st string) {
-		state = st
-		if len(lastLexeme) > 0 {
-			lexemes = append(lexemes, lastLexeme)
-			lastLexeme = make([]byte, 0)
+		if i < len(tokens) {
+			t = tokens[i]
 		}
 	}
 
-	reset := func() {
-		change("sNone")
-	}
-
-	for i < len(src) {
-		c = src[i]
-
-		switch state {
-		case "sNone":
-
-			switch {
-			case c == '/' && src[i+1] == '*':
-				change("sBlockComment")
-				skip()
-				skip()
-			case c == '/' && src[i+1] == '/':
-				change("sLineComment")
-				skip()
-				skip()
-			case matchByte("[0-9]", c):
-				change("sNumber")
-				eat()
-			case matchByte(";", c):
-				change("sSemi")
-				eat()
-				reset()
-			case matchByte(letters, c):
-				change("sName")
-				eat()
-			case matchByte(operators, c):
-				change("sOperator")
-				eat()
-			case matchByte(special, c):
-				change("sSpecial")
-				eat()
-				reset()
-			case matchByte(stringParens, c):
-				change("sString")
-				eat()
-			default:
-				skip()
-			}
-
-		case "sBlockComment":
-			if c == '*' && src[i+1] == '/' {
-				reset()
-			} else {
-				skip()
-			}
-
-		case "sLineComment":
-			if c == '\n' {
-				reset()
-			} else {
-				skip()
-			}
-
-		case "sNumber":
-			if matchByte("[0-9]", c) {
-				eat()
-			} else if matchByte("\\.", c) {
-				if contains(lastLexeme, c) {
-					change("sOperator")
-					eat()
-				} else {
-					eat()
-				}
-			} else if matchByte(letters, c) {
-				errorInvalidToken(c)
-			} else {
-				reset()
-			}
-
-		case "sOperator":
-			if matchByte(operators, c) {
-				eat()
-			} else {
-				reset()
-			}
-
-		case "sName":
-			if matchByte("[A-Za-z0-9_$@]", c) {
-				eat()
-			} else {
-				reset()
-			}
-
-		case "sString":
-			eat()
-			if matchByte(stringParens, c) {
-				reset()
-			}
+	back := func() {
+		i--
+		if i > 0 {
+			t = tokens[i]
 		}
 	}
 
-	if state != "sNone" {
-		reset()
-	}
-
-	return lexemes
-}
-
-type token struct {
-	tType  int32
-	lexeme string
-}
-
-const (
-	tAS = iota
-	tRETURN
-	tFUNCTION
-	tFROM
-	tDEFAULT
-	tEXPORT
-	tIMPORT
-	tVAR
-	tCURLY_LEFT
-	tCURLY_RIGHT
-	tPAREN_LEFT
-	tPAREN_RIGHT
-	tBRACKET_LEFT
-	tBRACKET_RIGHT
-	tCOMMA
-	tCOLON
-	tASSIGN
-	tSEMI
-	tNUMBER
-	tSTRING
-	tNAME
-	tCONST
-	tLET
-	tOF
-	tELSE
-	tIF
-	tNEW
-	tTRY
-	tCATCH
-	tWHILE
-	tDO
-)
-
-func getTokens(lexemes [][]byte) []token {
-	tokens := make([]token, 0)
-
-	i := 0
-	var lexeme string
-
-	add := func(tType int32) {
-		tokens = append(tokens, token{tType, lexeme})
-		i++
-	}
-
-	for i := range lexemes {
-		lexeme = string(lexemes[i])
-
-		switch {
-		case lexeme == "const":
-			add(tCONST)
-		case lexeme == "let":
-			add(tLET)
-		case lexeme == "do":
-			add(tDO)
-		case lexeme == "while":
-			add(tWHILE)
-		case lexeme == "new":
-			add(tNEW)
-		case lexeme == "catch":
-			add(tCATCH)
-		case lexeme == "try":
-			add(tTRY)
-		case lexeme == "else":
-			add(tELSE)
-		case lexeme == "if":
-			add(tIF)
-		case lexeme == "of":
-			add(tOF)
-		case lexeme == "as":
-			add(tAS)
-		case lexeme == "return":
-			add(tRETURN)
-		case lexeme == "function":
-			add(tFUNCTION)
-		case lexeme == "from":
-			add(tFROM)
-		case lexeme == "default":
-			add(tDEFAULT)
-		case lexeme == "export":
-			add(tEXPORT)
-		case lexeme == "import":
-			add(tIMPORT)
-		case lexeme == "var":
-			add(tVAR)
-		case lexeme == "{":
-			add(tCURLY_LEFT)
-		case lexeme == "}":
-			add(tCURLY_RIGHT)
-		case lexeme == "(":
-			add(tPAREN_LEFT)
-		case lexeme == ")":
-			add(tPAREN_RIGHT)
-		case lexeme == "[":
-			add(tBRACKET_LEFT)
-		case lexeme == "]":
-			add(tBRACKET_RIGHT)
-		case lexeme == ",":
-			add(tCOMMA)
-		case lexeme == ":":
-			add(tCOLON)
-		case lexeme == "=":
-			add(tASSIGN)
-		case lexeme == ";":
-			add(tSEMI)
-		case matchString("^[0-9]", lexeme):
-			add(tNUMBER)
-		case matchString("\\'|\"|\\`", lexeme):
-			add(tSTRING)
-		default:
-			add(tNAME)
-		}
-	}
-
-	return tokens
-}
-
-var keywords = []int{
-	tAS,
-	tRETURN,
-	tFUNCTION,
-	tFROM,
-	tDEFAULT,
-	tEXPORT,
-	tIMPORT,
-	tVAR,
-	tCONST,
-	tLET,
-	tOF,
-	tELSE,
-	tIF,
-	tNEW,
-	tTRY,
-	tCATCH,
-	tWHILE,
-	tDO,
-}
-
-func isKeyword(t token) bool {
-	return containsInt(keywords, int(t.tType))
-}
-
-type importInfo struct {
-	file       string
-	vars       []string
-	defaultVar string
-}
-
-type functionInfo struct {
-	args          []string
-	startBlockLvl int
-}
-
-func parse(tokens []token, fileName string) []byte {
-	body := make([]byte, 0)
-
-	i := 0
-
-	exportedVars := ""
-	exportedDefault := ""
-
-	getToken := func(index int) token {
-		if index >= 0 && index < len(tokens) {
-			return tokens[index]
-		}
-		return token{}
-	}
-
-	//assumes current token index!!!
-	writeToken := func(t token) {
-		if isKeyword(t) && (getToken(i-1).tType == tNAME || getToken(i-1).tType == tNUMBER) {
-			body = append(body, ' ')
-		}
-		body = append(body, []byte(t.lexeme)...)
-		if isKeyword(t) && (getToken(i+1).tType == tNAME || getToken(i+1).tType == tNUMBER || isKeyword(getToken(i+1))) {
-			body = append(body, ' ')
-		}
-	}
-
-	// writeNext := func() {
-	// 	writeToken(tokens[i])
-	// 	i++
-	// }
-
-	// skip := func() {}
-
-	result := make([]byte, 0)
-
-	formattedPath := formatImportPath(fileName)
-	body = append(body, []byte(fmt.Sprintf("var %s=(function(){", formattedPath))...)
-
-	fileImports := make([]*importInfo, 0)
-
-	functionStack := make([]functionInfo, 0)
-
-	blockLvl := 0
+	exportObjName := formatImportPath(resolvedPath)
+	// add module pattern
+	write(tVAR, "var")
+	write(tNAME, exportObjName)
+	write(tEQUALS, "=")
+	write(tPAREN_LEFT, "(")
+	write(tFUNCTION, "function")
+	write(tPAREN_LEFT, "(")
+	write(tPAREN_RIGHT, ")")
+	write(tCURLY_LEFT, "{")
 
 	for i < len(tokens) {
-		if tokens[i].tType == tIMPORT {
-			//imports
-			imported := importInfo{}
+		switch t.tType {
+		case tIMPORT:
+			jsImport := jsImportInfo{}
+			jsImport.vars = make([]string, 0)
 
-			if tokens[i+1].tType == tNAME {
-				imported.defaultVar = tokens[i+1].lexeme
-				i++
-			}
-
-			for i++; tokens[i].tType != tSEMI; i++ {
-				if tokens[i].tType == tNAME {
-					imported.vars = append(imported.vars, tokens[i].lexeme)
-				} else if tokens[i].tType == tDEFAULT {
-					i += 2
-					imported.defaultVar = tokens[i].lexeme
+			for t.tType != tSEMI {
+				// no curly brace encountered
+				if t.tType == tNAME {
+					jsImport.def = t.lexeme
 				}
+				// destructuring import
+				if t.tType == tCURLY_LEFT {
+					for t.tType != tCURLY_RIGHT {
+						if t.tType == tDEFAULT {
+							skip()                  // default
+							skip()                  // as
+							jsImport.def = t.lexeme // foo
+						} else if t.tType == tNAME {
+							jsImport.vars = append(jsImport.vars, t.lexeme)
+						}
+						skip()
+					}
+				}
+				skip()
 			}
-
-			importText := ""
-
-			importPath := resolveImportPath(tokens[i-1].lexeme, fileName)
-			formattedPath := formatImportPath(importPath)
-			imported.file = formattedPath
+			// end of import statement found
+			back()
+			importPath := resolveImportPath(t.lexeme, resolvedPath)
+			skip() // "./foo"
+			skip() // ;
 
 			ext := getExtension(importPath)
+			formattedName := formatImportPath(importPath)
+
+			jsImport.resolvedPath = importPath
+			jsImport.exportObjName = formattedName
+			imports = append(imports, jsImport)
+
 			if ext != "js" {
-				from, err := os.Open(importPath)
-				if err != nil {
-					fmt.Println(err)
+				fullFileName := formattedName + "." + ext
+				write(tVAR, "var")
+				write(tNAME, jsImport.def)
+				write(tASSIGN, "=")
+				write(tSTRING, fmt.Sprintf("\"%s\"", fullFileName))
+				write(tSEMI, ";")
+			}
+		case tEXPORT:
+			skip() // export
+			if t.tType == tDEFAULT {
+				skip() // default
+				for t.tType != tSEMI {
+					fileExports.def = append(fileExports.def, t)
+					skip()
 				}
-				defer from.Close()
-
-				fullFileName := formattedPath + "." + ext
-				to, err := os.OpenFile("test/build/"+fullFileName, os.O_RDWR|os.O_CREATE, 0666)
-				if err != nil {
-					fmt.Println(err)
-				}
-				defer to.Close()
-
-				io.Copy(to, from)
-
-				importText += fmt.Sprintf("const %v='%v';", imported.defaultVar, fullFileName)
 			} else {
-				src, _ := ioutil.ReadFile(importPath)
-				result = append(result, parse(getTokens(getLexemes([]byte(src))), importPath)...)
-				fileImports = append(fileImports, &imported)
-			}
-
-			body = append(body, []byte(importText)...)
-
-		} else if tokens[i].tType == tEXPORT {
-			// exports
-			for i++; tokens[i].tType != tSEMI; i++ {
-				if tokens[i].tType == tNAME {
-					exportedVars += tokens[i].lexeme + ","
-					writeToken(tokens[i])
-				} else if tokens[i].tType == tDEFAULT {
-					for i++; tokens[i].tType != tSEMI; i++ {
-						exportedDefault += tokens[i].lexeme
+				for t.tType != tSEMI {
+					if t.tType == tNAME {
+						fileExports.vars = append(fileExports.vars, t)
 					}
-					break
-				} else {
-					writeToken(tokens[i])
+					eat()
 				}
+				eat()
 			}
-			writeToken(tokens[i])
-		} else if tokens[i].tType == tFUNCTION {
-			info := functionInfo{}
-			info.args = make([]string, 0)
-			info.startBlockLvl = blockLvl
 
-			for tokens[i].tType != tPAREN_LEFT {
-				writeToken(tokens[i])
-				i++
-			}
-			for ; tokens[i].tType != tPAREN_RIGHT; i++ {
-				writeToken(tokens[i])
-				if tokens[i].tType == tNAME {
-					info.args = append(info.args, tokens[i].lexeme)
-				}
-			}
-			functionStack = append(functionStack, info)
-			writeToken(tokens[i])
-		} else if tokens[i].tType == tCURLY_LEFT {
-			writeToken(tokens[i])
-			blockLvl++
-		} else if tokens[i].tType == tCURLY_RIGHT {
-			writeToken(tokens[i])
-			blockLvl--
+		default:
+			eat()
+		}
+	}
 
-			if len(functionStack) > 0 {
-				currentFunction := functionStack[len(functionStack)-1]
-				if currentFunction.startBlockLvl == blockLvl {
-					functionStack = functionStack[:len(functionStack)-1]
-				}
-			}
-		} else {
-			if tokens[i].tType == tNAME {
-				newLexeme := tokens[i].lexeme
+	// append exports object return
+	write(tRETURN, "return")
+	write(tCURLY_LEFT, "{")
 
-				importRedeclared := false
-				for _, fInfo := range functionStack {
-					if containsStr(fInfo.args, tokens[i].lexeme) {
-						importRedeclared = true
-						break
-					}
-				}
+	if len(fileExports.def) > 0 {
+		write(tNAME, "default")
+		write(tCOLON, ":")
 
-				if !importRedeclared {
-					for _, imp := range fileImports {
-						if imp.defaultVar == tokens[i].lexeme {
-							newLexeme = imp.file + ".default"
-						} else {
-							for _, importVar := range imp.vars {
-								if importVar == tokens[i].lexeme {
-									newLexeme = imp.file + "." + importVar
-								}
-							}
-						}
-					}
-				}
+		for _, defToken := range fileExports.def {
+			write(defToken.tType, defToken.lexeme)
+		}
 
-				writeToken(token{tNAME, newLexeme})
-			} else {
-				writeToken(tokens[i])
+		write(tCOMMA, ",")
+	}
+
+	for _, varToken := range fileExports.vars {
+		write(varToken.tType, varToken.lexeme)
+		write(tCOMMA, ",")
+	}
+
+	write(tCURLY_RIGHT, "}")
+	write(tSEMI, ";")
+
+	// finish module pattern
+	write(tCURLY_RIGHT, "}")
+	write(tPAREN_RIGHT, ")")
+	write(tPAREN_LEFT, "(")
+	write(tPAREN_RIGHT, ")")
+	write(tSEMI, ";")
+
+	return result, imports
+}
+
+func copyFile(dst, src string) {
+	from, err := os.Open(src)
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer from.Close()
+
+	to, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer to.Close()
+	io.Copy(to, from)
+}
+
+func addFileToBundle(
+	resolvedPath string,
+	allImportedPaths *[]string,
+	bundleFile *os.File,
+	bundleFileReadyCh chan bool,
+	importsFinishedCh chan string,
+) {
+	*allImportedPaths = append(*allImportedPaths, resolvedPath)
+
+	ext := getExtension(resolvedPath)
+
+	switch ext {
+	case "js":
+		src, err := ioutil.ReadFile(resolvedPath)
+		if err != nil {
+			panic(err)
+		}
+		tokens := lex(src)
+
+		result, fileImports := transformIntoModule(tokens, resolvedPath)
+
+		unbundledFiles := make([]string, 0)
+		for _, imp := range fileImports {
+			if !containsStr(*allImportedPaths, imp.resolvedPath) {
+				unbundledFiles = append(unbundledFiles, imp.resolvedPath)
 			}
 		}
 
-		i++
+		addFilesToBundleAsync(unbundledFiles, allImportedPaths, bundleFile, bundleFileReadyCh)
+		writeToFile(result, bundleFile, bundleFileReadyCh)
+
+	default:
+		dstFileName := filepath.Dir(bundleFile.Name()) + "/" + formatImportPath(resolvedPath) + "." + ext
+		copyFile(dstFileName, resolvedPath)
+	}
+	importsFinishedCh <- resolvedPath
+}
+
+func writeToFile(tokens []token, file *os.File, isFileReady chan bool) {
+	<-isFileReady
+	for i, t := range tokens {
+		tIsKeyword := isKeyword(t)
+
+		toWrite := make([]byte, 0)
+		if tIsKeyword && i > 0 && (tokens[i-1].tType == tNAME || tokens[i-1].tType == tNUMBER || isKeyword(tokens[i-1])) {
+			toWrite = append(toWrite, ' ')
+		}
+		toWrite = append(toWrite, []byte(t.lexeme)...)
+		if tIsKeyword && i < len(tokens) && (tokens[i+1].tType == tNAME || tokens[i+1].tType == tNUMBER) {
+			toWrite = append(toWrite, ' ')
+		}
+
+		file.Write(toWrite)
+	}
+	isFileReady <- true
+}
+
+func addFilesToBundleAsync(
+	files []string,
+	allImportedPaths *[]string,
+	bundleFile *os.File,
+	bundleFileReadyCh chan bool,
+) {
+	filesImportedCh := make(chan string, len(files))
+
+	for _, unbundledFile := range files {
+		go addFileToBundle(unbundledFile, allImportedPaths, bundleFile, bundleFileReadyCh, filesImportedCh)
 	}
 
-	exportText := ""
-	if exportedDefault != "" {
-		exportText = fmt.Sprintf("return {default:%v,%v};})();", exportedDefault, exportedVars)
-	} else {
-		exportText = fmt.Sprintf("return {%v};})();", exportedVars)
+	for counter := 0; counter < len(files); counter++ {
+		fmt.Printf("Finished bundling %s\n", <-filesImportedCh)
 	}
-	body = append(body, []byte(exportText)...)
+}
 
-	return append(result, body...)
+func createBundle(entryFileName, bundleFileName string) {
+	allImportedPaths := make([]string, 0)
+
+	os.Remove(bundleFileName)
+	bundleFile, err := os.Create(bundleFileName)
+	if err != nil {
+		panic(err)
+	}
+	defer bundleFile.Close()
+
+	bundleFileReadyCh := make(chan bool, 1)
+	bundleFileReadyCh <- true
+
+	addFilesToBundleAsync([]string{entryFileName}, &allImportedPaths, bundleFile, bundleFileReadyCh)
 }
 
 func main() {
-	srcFileName := "test/index.js"
-	src, _ := ioutil.ReadFile(srcFileName)
-
-	result := parse(getTokens(getLexemes([]byte(src))), srcFileName)
-
-	ioutil.WriteFile("test/build/bundle.js", result, 777)
+	createBundle("test/index.js", "test/build/bundle.js")
 }

@@ -1,1 +1,3 @@
-export const foo = 23;
+import stuff from "./sprites/brick.png";
+
+console.log(stuff);
