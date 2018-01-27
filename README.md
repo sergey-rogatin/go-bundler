@@ -1,4 +1,4 @@
-# goBundler
+# go-bundler
 <b>STILL IN EARLY DEV AND NOT TESTED, USE AT YOUR OWN RISK</b>
 
 <p>A bundler for javascript files with minimal config, written in golang.
