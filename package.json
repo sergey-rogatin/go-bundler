@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lvl5hm/goBundler.git"
+    "url": "git+https://github.com/lvl5hm/go-bundler.git"
   },
   "keywords": ["golang", "go", "bundler", "bundle", "js"],
   "author": "lvl5hm",
