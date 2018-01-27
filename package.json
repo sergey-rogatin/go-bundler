@@ -3,7 +3,7 @@
   "bin": {
     "go-bundler": "bin/goBundler.exe"
   },
-  "version": "0.0.3",
+  "version": "0.0.5",
   "description": "",
   "directories": {
     "test": "test"
