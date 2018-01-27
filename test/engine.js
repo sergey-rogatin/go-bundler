@@ -1,15 +1,15 @@
-import utils from "./utils";
+import utils from './utils';
 
 // canvas initialization
 const SCALING_FACTOR = 4;
 
-const _canvas = document.querySelector("#game");
-_canvas.style.imageRendering = "pixelated";
+const _canvas = document.querySelector('#game');
+_canvas.style.imageRendering = 'pixelated';
 _canvas.width = 300;
 _canvas.height = 200;
 _canvas.style.width = _canvas.width * SCALING_FACTOR;
 _canvas.style.height = _canvas.height * SCALING_FACTOR;
-const _ctx = _canvas.getContext("2d");
+const _ctx = _canvas.getContext('2d');
 
 // global variables
 const _settings = {
@@ -31,7 +31,7 @@ const _keyCode = {
 };
 const _keys = {};
 
-const _time = {
+const _timeInfo = {
   deltaTime: 0,
   totalTime: 0,
   prevFrameTime: performance.now()
@@ -55,7 +55,7 @@ const api = {
   settings: _settings,
   keyCode: _keyCode,
   keys: _keys,
-  time: _time,
+  time: _timeInfo,
   camera: _camara,
 
   // entities
@@ -88,7 +88,7 @@ const api = {
     checkCollision(_entityList, entity, otherTypes, offsetX, offsetY),
 
   moveAndCheckForObstacles: (entity, otherTypes) =>
-    moveAndCheckForObstacles(_entityList, _time, entity, otherTypes)
+    moveAndCheckForObstacles(_entityList, _timeInfo, entity, otherTypes)
 };
 
 export default api;
@@ -151,7 +151,7 @@ function createMap(entityTypesObj, entityList, globalSettings, asciiMapRows) {
 
 // keyboard input
 
-document.onkeydown = function(event) {
+document.onkeydown = function (event) {
   const key = _keys[event.keyCode];
   if (!key) {
     return;
@@ -162,7 +162,7 @@ document.onkeydown = function(event) {
   }
 };
 
-document.onkeyup = function(event) {
+document.onkeyup = function (event) {
   const key = _keys[event.keyCode];
   if (!key) {
     return;
@@ -176,7 +176,7 @@ document.onkeyup = function(event) {
 // timing and main game loop
 
 function mainGameLoop() {
-  _ctx.fillStyle = "#444";
+  _ctx.fillStyle = '#444';
   _ctx.fillRect(0, 0, _canvas.width, _canvas.height);
 
   _ctx.save();
@@ -204,13 +204,13 @@ function mainGameLoop() {
   });
 
   const newTime = performance.now();
-  _time.deltaTime =
-    (newTime - _time.prevFrameTime) * 0.001 * _settings.timeSpeed;
-  if (_time.deltaTime > 0.1) {
-    _time.deltaTime = 0.016;
+  _timeInfo.deltaTime =
+    (newTime - _timeInfo.prevFrameTime) * 0.001 * _settings.timeSpeed;
+  if (_timeInfo.deltaTime > 0.1) {
+    _timeInfo.deltaTime = 0.016;
   }
-  _time.totalTime += _time.deltaTime;
-  _time.prevFrameTime = newTime;
+  _timeInfo.totalTime += _timeInfo.deltaTime;
+  _timeInfo.prevFrameTime = newTime;
   requestAnimationFrame(mainGameLoop);
 }
 
@@ -336,7 +336,12 @@ function checkCollision(
   return null;
 }
 
-function moveAndCheckForObstacles(entityList, time, entity, otherTypes) {
+function moveAndCheckForObstacles(
+  entityList,
+  time,
+  entity,
+  otherTypes
+) {
   const horizWall = checkCollision(
     entityList,
     entity,

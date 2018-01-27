@@ -219,7 +219,7 @@ func main() {
 		config.Entry = "test/index.js"
 	}
 	if config.BundleDir == "" {
-		config.BundleDir = "build"
+		config.BundleDir = "test/build"
 	}
 	if config.DevServer.Port == 0 {
 		config.DevServer.Port = 8080
