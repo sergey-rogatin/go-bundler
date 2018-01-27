@@ -1,0 +1,22 @@
+{
+  "name": "go-bundler",
+  "version": "1.0.0",
+  "description": "",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lvl5hm/goBundler.git"
+  },
+  "keywords": ["golang", "go", "bundler", "bundle", "js"],
+  "author": "lvl5hm",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/lvl5hm/goBundler/issues"
+  },
+  "homepage": "https://github.com/lvl5hm/goBundler#readme"
+}
