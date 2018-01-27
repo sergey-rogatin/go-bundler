@@ -2,7 +2,7 @@
   "entry": "test/index.js",
   "templateHTML": "test/template.html",
   "bundleDir": "test/build",
-  "watchFiles": false,
+  "watchFiles": true,
   "devServer": {
     "enable": true,
     "port": 8080

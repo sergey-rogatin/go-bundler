@@ -123,7 +123,6 @@ func addFileToBundle(
 		if ok && cachedData.lastModTime == fileStats.ModTime() {
 			data = cachedData.data
 			fileImports = cachedData.imports
-			writeToSafeFile(data, bundleSf)
 		} else {
 			src, err := ioutil.ReadFile(resolvedPath)
 			if err != nil {

@@ -10,7 +10,7 @@ import imgQuestionBlock from './sprites/questionBlock.png';
 
 import audioMainTheme from './sounds/mainTheme.mp3';
 import audioJump from './sounds/jump.wav';
-import audioCoin from './sounds/coin.wav';
+import audioCoin from './sounds/coin.wav'; 
 import audioStomp from './sounds/stomp.wav';
 
 
