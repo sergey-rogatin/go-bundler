@@ -4,10 +4,36 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+type safeFile struct {
+	file    *os.File
+	isReady chan bool
+}
+
+func newSafeFile(fileName string) *safeFile {
+	file, err := os.Create(fileName)
+	if err != nil {
+		panic(err)
+	}
+	isReady := make(chan bool, 1)
+	isReady <- true
+
+	return &safeFile{
+		file,
+		isReady,
+	}
+}
+
+func closeSafeFile(sf *safeFile) {
+	sf.file.Close()
+}
 
 func containsStr(arr []string, c string) bool {
 	for _, b := range arr {
@@ -18,36 +44,8 @@ func containsStr(arr []string, c string) bool {
 	return false
 }
 
-func trimJsString(jsString string) string {
+func trimQuotesFromString(jsString string) string {
 	return jsString[1 : len(jsString)-1]
-}
-
-func resolveImportPath(path, currentFileName string) string {
-	path = trimJsString(path)
-	pathParts := strings.Split(path, "/")
-
-	locationParts := strings.Split(currentFileName, "/")
-	locationParts = locationParts[:len(locationParts)-1]
-
-	for _, part := range pathParts {
-		if part == ".." {
-			locationParts = locationParts[:len(locationParts)-1]
-			pathParts = pathParts[1:]
-		}
-		if part == "." {
-			pathParts = pathParts[1:]
-		}
-	}
-
-	fullFileName := strings.Join(append(locationParts, pathParts...), "/")
-
-	ext := ""
-	if strings.Index(pathParts[len(pathParts)-1], ".") < 0 {
-		ext = ".js"
-	}
-
-	result := fullFileName + ext
-	return result
 }
 
 func getExtension(resolvedImportPath string) string {
@@ -58,7 +56,7 @@ func getExtension(resolvedImportPath string) string {
 	return "js"
 }
 
-func formatImportPath(resolvedImportPath string) string {
+func createVarNameFromPath(resolvedImportPath string) string {
 	newName := strings.Replace(resolvedImportPath, "/", "_", -1)
 	newName = strings.Replace(newName, ".", "_", -1)
 	return newName
@@ -67,194 +65,6 @@ func formatImportPath(resolvedImportPath string) string {
 func isKeyword(t token) bool {
 	_, ok := keywords[t.lexeme]
 	return ok && t.tType != tNAME
-}
-
-type jsImportInfo struct {
-	exportObjName string
-	resolvedPath  string
-	def           string
-	vars          []string
-}
-
-type jsExportInfo struct {
-	def  []token
-	vars []token
-}
-
-func transformIntoModule(tokens []token, resolvedPath string) ([]token, []jsImportInfo) {
-	result := make([]token, 0, len(tokens)+128)
-	imports := make([]jsImportInfo, 0)
-
-	if len(tokens) == 0 {
-		return result, imports
-	}
-
-	fileExports := jsExportInfo{}
-
-	i := 0
-	t := tokens[i]
-
-	write := func(tType tokenType, lexeme string) {
-		if tType == tNAME {
-			// check if imported variable
-			for _, imp := range imports {
-				ext := getExtension(imp.resolvedPath)
-				if ext != "js" {
-					continue
-				}
-				if imp.def == lexeme {
-					result = append(result, token{tNAME, imp.exportObjName})
-					result = append(result, token{tDOT, "."})
-					result = append(result, token{tNAME, "default"})
-					return
-				}
-				for _, importVar := range imp.vars {
-					if importVar == lexeme {
-						result = append(result, token{tNAME, imp.exportObjName})
-						result = append(result, token{tDOT, "."})
-						result = append(result, token{tNAME, lexeme})
-						return
-					}
-				}
-			}
-		}
-		result = append(result, token{tType, lexeme})
-	}
-
-	eat := func() {
-		write(t.tType, t.lexeme)
-		i++
-		if i < len(tokens) {
-			t = tokens[i]
-		}
-	}
-
-	skip := func() {
-		i++
-		if i < len(tokens) {
-			t = tokens[i]
-		}
-	}
-
-	back := func() {
-		i--
-		if i > 0 {
-			t = tokens[i]
-		}
-	}
-
-	exportObjName := formatImportPath(resolvedPath)
-	// add module pattern
-	write(tVAR, "var")
-	write(tNAME, exportObjName)
-	write(tEQUALS, "=")
-	write(tPAREN_LEFT, "(")
-	write(tFUNCTION, "function")
-	write(tPAREN_LEFT, "(")
-	write(tPAREN_RIGHT, ")")
-	write(tCURLY_LEFT, "{")
-
-	for i < len(tokens) {
-		switch t.tType {
-		case tIMPORT:
-			jsImport := jsImportInfo{}
-			jsImport.vars = make([]string, 0)
-
-			for t.tType != tSEMI {
-				// no curly brace encountered
-				if t.tType == tNAME {
-					jsImport.def = t.lexeme
-				}
-				// destructuring import
-				if t.tType == tCURLY_LEFT {
-					for t.tType != tCURLY_RIGHT {
-						if t.tType == tDEFAULT {
-							skip()                  // default
-							skip()                  // as
-							jsImport.def = t.lexeme // foo
-						} else if t.tType == tNAME {
-							jsImport.vars = append(jsImport.vars, t.lexeme)
-						}
-						skip()
-					}
-				}
-				skip()
-			}
-			// end of import statement found
-			back()
-			importPath := resolveImportPath(t.lexeme, resolvedPath)
-			skip() // "./foo"
-			skip() // ;
-
-			ext := getExtension(importPath)
-			formattedName := formatImportPath(importPath)
-
-			jsImport.resolvedPath = importPath
-			jsImport.exportObjName = formattedName
-			imports = append(imports, jsImport)
-
-			if ext != "js" {
-				fullFileName := formattedName + "." + ext
-				write(tVAR, "var")
-				write(tNAME, jsImport.def)
-				write(tASSIGN, "=")
-				write(tSTRING, fmt.Sprintf("\"%s\"", fullFileName))
-				write(tSEMI, ";")
-			}
-		case tEXPORT:
-			skip() // export
-			if t.tType == tDEFAULT {
-				skip() // default
-				for t.tType != tSEMI {
-					fileExports.def = append(fileExports.def, t)
-					skip()
-				}
-			} else {
-				for t.tType != tSEMI {
-					if t.tType == tNAME {
-						fileExports.vars = append(fileExports.vars, t)
-					}
-					eat()
-				}
-				eat()
-			}
-
-		default:
-			eat()
-		}
-	}
-
-	// append exports object return
-	write(tRETURN, "return")
-	write(tCURLY_LEFT, "{")
-
-	if len(fileExports.def) > 0 {
-		write(tNAME, "default")
-		write(tCOLON, ":")
-
-		for _, defToken := range fileExports.def {
-			write(defToken.tType, defToken.lexeme)
-		}
-
-		write(tCOMMA, ",")
-	}
-
-	for _, varToken := range fileExports.vars {
-		write(varToken.tType, varToken.lexeme)
-		write(tCOMMA, ",")
-	}
-
-	write(tCURLY_RIGHT, "}")
-	write(tSEMI, ";")
-
-	// finish module pattern
-	write(tCURLY_RIGHT, "}")
-	write(tPAREN_RIGHT, ")")
-	write(tPAREN_LEFT, "(")
-	write(tPAREN_RIGHT, ")")
-	write(tSEMI, ";")
-
-	return result, imports
 }
 
 func copyFile(dst, src string) {
@@ -275,9 +85,8 @@ func copyFile(dst, src string) {
 func addFileToBundle(
 	resolvedPath string,
 	allImportedPaths *[]string,
-	bundleFile *os.File,
-	bundleFileReadyCh chan bool,
-	importsFinishedCh chan string,
+	bundleSf *safeFile,
+	finishedImportsCh chan string,
 ) {
 	*allImportedPaths = append(*allImportedPaths, resolvedPath)
 
@@ -300,18 +109,35 @@ func addFileToBundle(
 			}
 		}
 
-		addFilesToBundleAsync(unbundledFiles, allImportedPaths, bundleFile, bundleFileReadyCh)
-		writeToFile(result, bundleFile, bundleFileReadyCh)
+		addFilesToBundle(unbundledFiles, allImportedPaths, bundleSf)
+		writeTokensToFile(result, bundleSf)
 
 	default:
-		dstFileName := filepath.Dir(bundleFile.Name()) + "/" + formatImportPath(resolvedPath) + "." + ext
+		dstFileName := filepath.Dir(bundleSf.file.Name()) + "/" + createVarNameFromPath(resolvedPath) + "." + ext
 		copyFile(dstFileName, resolvedPath)
 	}
-	importsFinishedCh <- resolvedPath
+	finishedImportsCh <- resolvedPath
 }
 
-func writeToFile(tokens []token, file *os.File, isFileReady chan bool) {
-	<-isFileReady
+func addFilesToBundle(
+	files []string,
+	allImportedPaths *[]string,
+	bundleSf *safeFile,
+) {
+	filesImportedCh := make(chan string, len(files))
+
+	for _, unbundledFile := range files {
+		go addFileToBundle(unbundledFile, allImportedPaths, bundleSf, filesImportedCh)
+	}
+
+	for counter := 0; counter < len(files); counter++ {
+		//fmt.Printf("Finished bundling %s\n", <-filesImportedCh)
+		<-filesImportedCh
+	}
+}
+
+func writeTokensToFile(tokens []token, sf *safeFile) {
+	<-sf.isReady
 	for i, t := range tokens {
 		tIsKeyword := isKeyword(t)
 
@@ -324,44 +150,37 @@ func writeToFile(tokens []token, file *os.File, isFileReady chan bool) {
 			toWrite = append(toWrite, ' ')
 		}
 
-		file.Write(toWrite)
+		sf.file.Write(toWrite)
 	}
-	isFileReady <- true
+	sf.isReady <- true
 }
 
-func addFilesToBundleAsync(
-	files []string,
-	allImportedPaths *[]string,
-	bundleFile *os.File,
-	bundleFileReadyCh chan bool,
-) {
-	filesImportedCh := make(chan string, len(files))
+func createBundle(entryFileName, bundleFileName string) []string {
+	buildStartTime := time.Now()
 
-	for _, unbundledFile := range files {
-		go addFileToBundle(unbundledFile, allImportedPaths, bundleFile, bundleFileReadyCh, filesImportedCh)
-	}
-
-	for counter := 0; counter < len(files); counter++ {
-		fmt.Printf("Finished bundling %s\n", <-filesImportedCh)
-	}
-}
-
-func createBundle(entryFileName, bundleFileName string) {
 	allImportedPaths := make([]string, 0)
 
 	os.Remove(bundleFileName)
-	bundleFile, err := os.Create(bundleFileName)
-	if err != nil {
-		panic(err)
-	}
-	defer bundleFile.Close()
+	sf := newSafeFile(bundleFileName)
+	defer closeSafeFile(sf)
 
-	bundleFileReadyCh := make(chan bool, 1)
-	bundleFileReadyCh <- true
+	addFilesToBundle([]string{entryFileName}, &allImportedPaths, sf)
 
-	addFilesToBundleAsync([]string{entryFileName}, &allImportedPaths, bundleFile, bundleFileReadyCh)
+	fmt.Printf("Build finished in %s\n", time.Since(buildStartTime))
+	return allImportedPaths
 }
 
 func main() {
-	createBundle("test/index.js", "test/build/bundle.js")
+	entryName := "test/index.js"
+	bundleName := "test/build/bundle.js"
+	bundleHTMLTemplate("test/template.html", bundleName)
+	allImportedPaths := createBundle(entryName, bundleName)
+
+	// dev server
+	watchBundledFiles(allImportedPaths, entryName, bundleName)
+
+	fmt.Println("Dev server listening at port 8080")
+	server := http.FileServer(http.Dir("test/build"))
+	err := http.ListenAndServe(":8080", server)
+	log.Fatal(err)
 }

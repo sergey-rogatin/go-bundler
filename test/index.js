@@ -113,7 +113,7 @@ function updateMario(mario) {
 
   if (keySpace.wentDown && mario.isOnGround) {
     mario.speedY = -12;
-    playSound(sndJump);
+    playSound(sndCoin);
   }
 
   // question blocks

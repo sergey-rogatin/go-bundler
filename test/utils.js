@@ -29,5 +29,3 @@ unorderedList.REMOVED_ITEM = Symbol("REMOVED_ITEM");
 export default {
   unorderedList
 };
-
-export const foo = "dsadasd";

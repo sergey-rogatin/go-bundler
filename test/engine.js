@@ -1,6 +1,4 @@
-import utils, { foo } from "./utils";
-
-console.log(foo);
+import utils from "./utils";
 
 // canvas initialization
 const SCALING_FACTOR = 4;
