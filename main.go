@@ -123,6 +123,7 @@ func addFileToBundle(
 		if ok && cachedData.lastModTime == fileStats.ModTime() {
 			data = cachedData.data
 			fileImports = cachedData.imports
+			writeToSafeFile(data, bundleSf)
 		} else {
 			src, err := ioutil.ReadFile(resolvedPath)
 			if err != nil {
@@ -131,8 +132,6 @@ func addFileToBundle(
 
 			data, fileImports = loadJsFile(src, resolvedPath)
 		}
-
-		writeToSafeFile(data, bundleSf)
 
 	default:
 		bundleDir := filepath.Dir(bundleSf.file.Name())
@@ -147,6 +146,7 @@ func addFileToBundle(
 	})
 
 	addFilesToBundle(fileImports, bundleSf, cache)
+	writeToSafeFile(data, bundleSf)
 	finishedImportsCh <- resolvedPath
 }
 
