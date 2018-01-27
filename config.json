@@ -1,0 +1,9 @@
+{
+  "entry": "test/index.js",
+  "templateHTML": "test/template.html",
+  "bundleDir": "test/build",
+  "watchFiles": true,
+  "devServer": {
+    "enable": true
+  }
+}

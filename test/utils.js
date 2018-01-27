@@ -1,11 +1,3 @@
-import imgMarioRunning from "./sprites/marioRunning.png";
-import imgMarioIdle from "./sprites/marioIdle.png";
-import imgMarioJumping from "./sprites/marioJumping.png";
-import imgGroundBlock from "./sprites/groundBlock.png";
-import imgCoin from "./sprites/coin.png";
-import imgGoomba from "./sprites/goomba.png";
-import imgQuestionBlock from "./sprites/questionBlock.png";
-
 function unorderedList() {
   return {
     items: [],

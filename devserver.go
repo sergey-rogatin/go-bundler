@@ -30,26 +30,17 @@ func bundleHTMLTemplate(templateName, bundleName string) {
 	ioutil.WriteFile(filepath.Join(bundleDir, "index.html"), []byte(result), 0666)
 }
 
-func watchBundledFiles(allImportedPaths []string, entryName, bundleName string) func() {
-	resetModTime := func() []time.Time {
-		modTime := make([]time.Time, 0, len(allImportedPaths))
-		for _, file := range allImportedPaths {
-			stats, _ := os.Stat(file)
-			modTime = append(modTime, stats.ModTime())
-		}
-		return modTime
-	}
+func watchBundledFiles(cache *bundleCache, entryName, bundleName string) func() {
+	fmt.Println("Watching for file changes")
 
-	modTime := resetModTime()
 	running := true
 
 	checkFiles := func() {
 		for running {
-			for i, file := range allImportedPaths {
-				stats, _ := os.Stat(file)
-				if modTime[i] != stats.ModTime() {
-					allImportedPaths = createBundle(entryName, bundleName)
-					modTime = resetModTime()
+			for path, file := range cache.files {
+				stats, _ := os.Stat(path)
+				if file.lastModTime != stats.ModTime() {
+					createBundle(entryName, bundleName, cache)
 					break
 				}
 			}
@@ -57,7 +48,7 @@ func watchBundledFiles(allImportedPaths []string, entryName, bundleName string) 
 		}
 	}
 
-	go checkFiles()
+	checkFiles()
 
 	return func() {
 		fmt.Println("Stopped watching files")

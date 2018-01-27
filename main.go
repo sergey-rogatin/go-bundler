@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -9,12 +10,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
 type safeFile struct {
-	file    *os.File
-	isReady chan bool
+	file *os.File
+	lock sync.RWMutex
 }
 
 func newSafeFile(fileName string) *safeFile {
@@ -22,16 +24,11 @@ func newSafeFile(fileName string) *safeFile {
 	if err != nil {
 		panic(err)
 	}
-	isReady := make(chan bool, 1)
-	isReady <- true
 
-	return &safeFile{
-		file,
-		isReady,
-	}
+	return &safeFile{file, sync.RWMutex{}}
 }
 
-func closeSafeFile(sf *safeFile) {
+func (sf *safeFile) close() {
 	sf.file.Close()
 }
 
@@ -82,105 +79,173 @@ func copyFile(dst, src string) {
 	io.Copy(to, from)
 }
 
+type cachedFile struct {
+	data        []byte
+	lastModTime time.Time
+	imports     []string
+}
+
+type bundleCache struct {
+	files map[string]cachedFile
+	lock  sync.RWMutex
+}
+
+func (c *bundleCache) read(fileName string) (cachedFile, bool) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	file, ok := c.files[fileName]
+	return file, ok
+}
+
+func (c *bundleCache) write(fileName string, data cachedFile) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	c.files[fileName] = data
+}
+
 func addFileToBundle(
 	resolvedPath string,
-	allImportedPaths *[]string,
 	bundleSf *safeFile,
 	finishedImportsCh chan string,
+	cache *bundleCache,
 ) {
-	*allImportedPaths = append(*allImportedPaths, resolvedPath)
-
 	ext := getExtension(resolvedPath)
+	fileStats, _ := os.Stat(resolvedPath)
+
+	var data []byte
+	var fileImports []string
 
 	switch ext {
 	case "js":
-		src, err := ioutil.ReadFile(resolvedPath)
-		if err != nil {
-			panic(err)
-		}
-		tokens := lex(src)
-
-		result, fileImports := transformIntoModule(tokens, resolvedPath)
-
-		unbundledFiles := make([]string, 0)
-		for _, imp := range fileImports {
-			if !containsStr(*allImportedPaths, imp.resolvedPath) {
-				unbundledFiles = append(unbundledFiles, imp.resolvedPath)
+		cachedData, ok := cache.read(resolvedPath)
+		if ok && cachedData.lastModTime == fileStats.ModTime() {
+			data = cachedData.data
+			fileImports = cachedData.imports
+		} else {
+			src, err := ioutil.ReadFile(resolvedPath)
+			if err != nil {
+				panic(err)
 			}
+
+			data, fileImports = loadJsFile(src, resolvedPath)
 		}
 
-		addFilesToBundle(unbundledFiles, allImportedPaths, bundleSf)
-		writeTokensToFile(result, bundleSf)
+		writeToSafeFile(data, bundleSf)
 
 	default:
-		dstFileName := filepath.Dir(bundleSf.file.Name()) + "/" + createVarNameFromPath(resolvedPath) + "." + ext
+		bundleDir := filepath.Dir(bundleSf.file.Name())
+		dstFileName := bundleDir + "/" + createVarNameFromPath(resolvedPath) + "." + ext
 		copyFile(dstFileName, resolvedPath)
 	}
+
+	cache.write(resolvedPath, cachedFile{
+		data:        data,
+		lastModTime: fileStats.ModTime(),
+		imports:     fileImports,
+	})
+
+	addFilesToBundle(fileImports, bundleSf, cache)
 	finishedImportsCh <- resolvedPath
 }
 
 func addFilesToBundle(
 	files []string,
-	allImportedPaths *[]string,
 	bundleSf *safeFile,
+	cache *bundleCache,
 ) {
 	filesImportedCh := make(chan string, len(files))
 
 	for _, unbundledFile := range files {
-		go addFileToBundle(unbundledFile, allImportedPaths, bundleSf, filesImportedCh)
+		go addFileToBundle(unbundledFile, bundleSf, filesImportedCh, cache)
 	}
 
 	for counter := 0; counter < len(files); counter++ {
-		//fmt.Printf("Finished bundling %s\n", <-filesImportedCh)
 		<-filesImportedCh
 	}
 }
 
-func writeTokensToFile(tokens []token, sf *safeFile) {
-	<-sf.isReady
-	for i, t := range tokens {
-		tIsKeyword := isKeyword(t)
+func writeToSafeFile(data []byte, sf *safeFile) {
+	sf.lock.Lock()
+	defer sf.lock.Unlock()
 
-		toWrite := make([]byte, 0)
-		if tIsKeyword && i > 0 && (tokens[i-1].tType == tNAME || tokens[i-1].tType == tNUMBER || isKeyword(tokens[i-1])) {
-			toWrite = append(toWrite, ' ')
-		}
-		toWrite = append(toWrite, []byte(t.lexeme)...)
-		if tIsKeyword && i < len(tokens) && (tokens[i+1].tType == tNAME || tokens[i+1].tType == tNUMBER) {
-			toWrite = append(toWrite, ' ')
-		}
-
-		sf.file.Write(toWrite)
-	}
-	sf.isReady <- true
+	sf.file.Write(data)
 }
 
-func createBundle(entryFileName, bundleFileName string) []string {
+func createBundle(entryFileName, bundleFileName string, cache *bundleCache) {
 	buildStartTime := time.Now()
 
-	allImportedPaths := make([]string, 0)
-
+	os.MkdirAll(filepath.Dir(bundleFileName), 0666)
 	os.Remove(bundleFileName)
 	sf := newSafeFile(bundleFileName)
-	defer closeSafeFile(sf)
+	defer sf.close()
 
-	addFilesToBundle([]string{entryFileName}, &allImportedPaths, sf)
+	addFilesToBundle([]string{entryFileName}, sf, cache)
 
 	fmt.Printf("Build finished in %s\n", time.Since(buildStartTime))
-	return allImportedPaths
+}
+
+type configJSON struct {
+	Entry        string
+	TemplateHTML string
+	BundleDir    string
+	WatchFiles   bool
+	DevServer    struct {
+		Enable bool
+		Port   int
+	}
 }
 
 func main() {
-	entryName := "test/index.js"
-	bundleName := "test/build/bundle.js"
-	bundleHTMLTemplate("test/template.html", bundleName)
-	allImportedPaths := createBundle(entryName, bundleName)
+	config := configJSON{}
+	config.TemplateHTML = "test/template.html"
+	config.WatchFiles = true
+	config.DevServer.Enable = true
 
-	// dev server
-	watchBundledFiles(allImportedPaths, entryName, bundleName)
+	if len(os.Args) > 1 {
+		configFileName := os.Args[1]
 
-	fmt.Println("Dev server listening at port 8080")
-	server := http.FileServer(http.Dir("test/build"))
-	err := http.ListenAndServe(":8080", server)
-	log.Fatal(err)
+		configFile, err := ioutil.ReadFile(configFileName)
+		if err != nil {
+			fmt.Println("Unable to load config file!")
+			config = configJSON{}
+		}
+		json.Unmarshal(configFile, &config)
+	}
+
+	// config defaults
+	if config.Entry == "" {
+		config.Entry = "test/index.js"
+	}
+	if config.BundleDir == "" {
+		config.BundleDir = "build"
+	}
+	if config.DevServer.Port == 0 {
+		config.DevServer.Port = 8080
+	}
+
+	entryName := config.Entry
+	bundleName := filepath.Join(config.BundleDir, "bundle.js")
+
+	cache := bundleCache{}
+	cache.files = make(map[string]cachedFile)
+	createBundle(entryName, bundleName, &cache)
+
+	if config.TemplateHTML != "" {
+		bundleHTMLTemplate(config.TemplateHTML, bundleName)
+	}
+
+	// dev server and watching files
+	if config.DevServer.Enable {
+		if config.WatchFiles {
+			go watchBundledFiles(&cache, entryName, bundleName)
+		}
+		fmt.Printf("Dev server listening at port %v\n", config.DevServer.Port)
+		server := http.FileServer(http.Dir(config.BundleDir))
+		err := http.ListenAndServe(fmt.Sprintf(":%v", config.DevServer.Port), server)
+		log.Fatal(err)
+	} else if config.WatchFiles {
+		watchBundledFiles(&cache, entryName, bundleName)
+	}
 }
