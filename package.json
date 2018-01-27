@@ -1,5 +1,8 @@
 {
   "name": "go-bundler",
+  "bin": {
+    "go-bundler": "bin/goBundler.exe"
+  },
   "version": "1.0.0",
   "description": "",
   "directories": {
