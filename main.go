@@ -275,17 +275,45 @@ func (fc functionCall) String() string {
 }
 
 type memberExpression struct {
-	object   ast
-	property ast
+	object       ast
+	property     ast
 	isCalculated bool
 }
 
 func (me memberExpression) String() string {
 	if !me.isCalculated {
 		return me.object.String() + "." + me.property.String()
-	} else {
-		return me.object.String() + "[" + me.property.String() + "]"
 	}
+	return me.object.String() + "[" + me.property.String() + "]"
+}
+
+type objectProperty struct {
+	key          ast
+	value        ast
+	isCalculated bool
+}
+
+type objectLiteral struct {
+	properties []objectProperty
+}
+
+func (ol objectLiteral) String() string {
+	result := "{"
+	for i, prop := range ol.properties {
+		if prop.isCalculated {
+			result += "["
+		}
+		result += prop.key.String()
+		if prop.isCalculated {
+			result += "]"
+		}
+		result += ":" + prop.value.String()
+		if i < len(ol.properties)-1 {
+			result += ","
+		}
+	}
+	result += "}"
+	return result
 }
 
 type declaration struct {
@@ -338,6 +366,45 @@ func (is importStatement) String() string {
 	return result
 }
 
+type ifStatement struct {
+	test       ast
+	consequent ast
+	alternate  ast
+}
+
+func (is ifStatement) String() string {
+	result := "if(" + is.test.String() + ")" + is.consequent.String()
+	if is.alternate != nil {
+		result += " else " + is.alternate.String()
+	}
+	return result
+}
+
+type blockStatement struct {
+	statements []ast
+}
+
+func (bs blockStatement) String() string {
+	result := "{"
+	for _, st := range bs.statements {
+		result += st.String() + ";"
+	}
+	result += "}"
+	return result
+}
+
+type program struct {
+	statements []ast
+}
+
+func (ps program) String() string {
+	result := ""
+	for _, s := range ps.statements {
+		result += s.String() + ";"
+	}
+	return result
+}
+
 type ast interface {
 	String() string
 }
@@ -375,28 +442,28 @@ func parse(src []token) {
 	type grammar func() ast
 
 	var (
-		statement,
-		un20,
-		un19,
-		un18,
-		un17,
-		un16,
-		bin15,
-		bin14,
-		bin13,
-		bin12,
-		bin11,
-		bin10,
-		bin9,
-		bin8,
-		bin7,
-		bin6,
-		bin5,
-		bin4,
-		bin3,
-		bin2,
-		bin1,
-		expression grammar
+		getStatement,
+		getAtom,
+		getNewOrMember,
+		getFunctionCall,
+		getPostfixUnary,
+		getPrefixUnary,
+		getExponent,
+		getMultDiv,
+		getAddSub,
+		getShift,
+		getCompare,
+		getEquals,
+		getBitAnd,
+		getBitXor,
+		getBitOr,
+		getAnd,
+		getOr,
+		getCond,
+		getAssign,
+		getYield,
+		getSpread,
+		getExpression grammar
 	)
 
 	makeUnaryExp := func(ops []tokenType, leftType grammar, isPostfix bool) grammar {
@@ -434,19 +501,6 @@ func parse(src []token) {
 		return expFunc
 	}
 
-	// atom = func() ast {
-	// 	var result ast
-	// 	if accept(tNUMBER) || accept(tSTRING) || accept(tNAME) {
-	// 		result = atomValue{lexeme()}
-	// 	} else if accept(tPAREN_LEFT) {
-	// 		result = expression()
-	// 		expect(tPAREN_RIGHT)
-	// 	} else {
-	// 		result = unary()
-	// 	}
-	// 	return result
-	// }
-
 	makeBinExp := func(ops []tokenType, leftType grammar) grammar {
 		var expFunc grammar
 
@@ -473,13 +527,34 @@ func parse(src []token) {
 		return expFunc
 	}
 
-	un20 = func() ast {
+	getAtom = func() ast {
 		var result ast
 		if accept(tNUMBER) || accept(tSTRING) || accept(tNAME) || accept(tTRUE) || accept(tFALSE) {
 			result = atomValue{lexeme()}
 		} else if accept(tPAREN_LEFT) {
-			result = expression()
+			result = getExpression()
 			expect(tPAREN_RIGHT)
+		} else if accept(tCURLY_LEFT) {
+			objLit := objectLiteral{}
+			objLit.properties = make([]objectProperty, 0)
+			for !accept(tCURLY_RIGHT) {
+				prop := objectProperty{}
+				if accept(tBRACKET_LEFT) {
+					prop.key = getExpression()
+					prop.isCalculated = true
+					expect(tBRACKET_RIGHT)
+				} else if accept(tSTRING) || accept(tNAME) {
+					prop.key = atomValue{lexeme()}
+				}
+				expect(tCOLON)
+				prop.value = getSpread()
+				objLit.properties = append(objLit.properties, prop)
+				if !accept(tCOMMA) {
+					break
+				}
+			}
+			expect(tCURLY_RIGHT)
+			result = objLit
 		} else {
 			panic("whoops")
 		}
@@ -487,12 +562,12 @@ func parse(src []token) {
 		return result
 	}
 
-	un19 = func() ast {
+	getNewOrMember = func() ast {
 		var result ast
 
 		if accept(tNEW) {
 			fc := functionCall{}
-			fc.name = un19()
+			fc.name = getNewOrMember()
 			fc.isConstructor = true
 			fc.args = make([]string, 0)
 			expect(tPAREN_LEFT)
@@ -506,7 +581,7 @@ func parse(src []token) {
 			expect(tPAREN_RIGHT)
 			result = fc
 		} else {
-			object := un20()
+			object := getAtom()
 			if accept(tDOT) {
 				me := memberExpression{}
 				me.object = object
@@ -516,7 +591,7 @@ func parse(src []token) {
 			} else if accept(tBRACKET_LEFT) {
 				me := memberExpression{}
 				me.object = object
-				me.property = expression()
+				me.property = getExpression()
 				me.isCalculated = true
 				expect(tBRACKET_RIGHT)
 				result = me
@@ -528,10 +603,10 @@ func parse(src []token) {
 		return result
 	}
 
-	un18 = func() ast {
+	getFunctionCall = func() ast {
 		var result ast
 
-		funcName := un19()
+		funcName := getNewOrMember()
 		if accept(tPAREN_LEFT) {
 			fc := functionCall{}
 			fc.name = funcName
@@ -553,31 +628,31 @@ func parse(src []token) {
 		return result
 	}
 
-	un17 = makeUnaryExp([]tokenType{tINC, tDEC}, un18, true)
-	un16 = makeUnaryExp([]tokenType{tNOT, tBITWISE_NOT, tPLUS, tMINUS, tINC, tDEC, tTYPEOF, tVOID, tDELETE}, un17, false)
+	getPostfixUnary = makeUnaryExp([]tokenType{tINC, tDEC}, getFunctionCall, true)
+	getPrefixUnary = makeUnaryExp([]tokenType{tNOT, tBITWISE_NOT, tPLUS, tMINUS, tINC, tDEC, tTYPEOF, tVOID, tDELETE}, getPostfixUnary, false)
 
-	bin15 = makeBinExp([]tokenType{tEXP}, un16)
-	bin14 = makeBinExp([]tokenType{tMULT, tDIV, tMOD}, bin15)
-	bin13 = makeBinExp([]tokenType{tPLUS, tMINUS}, bin14)
-	bin12 = makeBinExp([]tokenType{tBITWISE_SHIFT_LEFT, tBITWISE_SHIFT_RIGHT, tBITWISE_SHIFT_RIGHT_ZERO}, bin13)
-	bin11 = makeBinExp([]tokenType{tLESS, tLESS_EQUALS, tGREATER, tGREATER_EQUALS, tIN, tINSTANCEOF}, bin12)
-	bin10 = makeBinExp([]tokenType{tEQUALS, tNOT_EQUALS, tEQUALS_STRICT, tNOT_EQUALS_STRICT}, bin11)
-	bin9 = makeBinExp([]tokenType{tBITWISE_AND}, bin10)
-	bin8 = makeBinExp([]tokenType{tBITWISE_XOR}, bin9)
-	bin7 = makeBinExp([]tokenType{tBITWISE_OR}, bin8)
-	bin6 = makeBinExp([]tokenType{tAND}, bin7)
-	bin5 = makeBinExp([]tokenType{tOR}, bin6)
+	getExponent = makeBinExp([]tokenType{tEXP}, getPrefixUnary)
+	getMultDiv = makeBinExp([]tokenType{tMULT, tDIV, tMOD}, getExponent)
+	getAddSub = makeBinExp([]tokenType{tPLUS, tMINUS}, getMultDiv)
+	getShift = makeBinExp([]tokenType{tBITWISE_SHIFT_LEFT, tBITWISE_SHIFT_RIGHT, tBITWISE_SHIFT_RIGHT_ZERO}, getAddSub)
+	getCompare = makeBinExp([]tokenType{tLESS, tLESS_EQUALS, tGREATER, tGREATER_EQUALS, tIN, tINSTANCEOF}, getShift)
+	getEquals = makeBinExp([]tokenType{tEQUALS, tNOT_EQUALS, tEQUALS_STRICT, tNOT_EQUALS_STRICT}, getCompare)
+	getBitAnd = makeBinExp([]tokenType{tBITWISE_AND}, getEquals)
+	getBitXor = makeBinExp([]tokenType{tBITWISE_XOR}, getBitAnd)
+	getBitOr = makeBinExp([]tokenType{tBITWISE_OR}, getBitXor)
+	getAnd = makeBinExp([]tokenType{tAND}, getBitOr)
+	getOr = makeBinExp([]tokenType{tOR}, getAnd)
 
-	bin4 = func() ast {
+	getCond = func() ast {
 		var result ast
 
-		test := bin5()
+		test := getOr()
 		if accept(tQUESTION) {
 			condExp := conditionalExpression{}
 			condExp.test = test
-			condExp.consequent = bin5()
+			condExp.consequent = getOr()
 			expect(tCOLON)
-			condExp.alternate = bin5()
+			condExp.alternate = getOr()
 			result = condExp
 		} else {
 			result = test
@@ -586,22 +661,22 @@ func parse(src []token) {
 		return result
 	}
 
-	bin3 = makeBinExp([]tokenType{
+	getAssign = makeBinExp([]tokenType{
 		tASSIGN, tPLUS_ASSIGN, tMINUS_ASSIGN, tMULT_ASSIGN, tDIV_ASSIGN,
 		tBITWISE_SHIFT_LEFT_ASSIGN, tBITWISE_SHIFT_RIGHT_ASSIGN, tBITWISE_SHIFT_RIGHT_ZERO_ASSIGN,
 		tBITWISE_AND_ASSIGN, tBITWISE_XOR_ASSIGN, tBITWISE_OR_ASSIGN,
-	}, bin4)
-	bin2 = makeBinExp([]tokenType{tYIELD, tYIELD_STAR}, bin3)
-	bin1 = makeBinExp([]tokenType{tSPREAD}, bin2)
+	}, getCond)
+	getYield = makeBinExp([]tokenType{tYIELD, tYIELD_STAR}, getAssign)
+	getSpread = makeBinExp([]tokenType{tSPREAD}, getYield)
 
-	expression = func() ast {
+	getExpression = func() ast {
 		var result ast
 
-		firstInSeq := bin1()
+		firstInSeq := getSpread()
 		if accept(tCOMMA) {
 			seqExp := sequenceExpression{[]ast{firstInSeq}}
 			for ok := true; ok; ok = accept(tCOMMA) {
-				seqExp.items = append(seqExp.items, bin1())
+				seqExp.items = append(seqExp.items, getSpread())
 			}
 			result = seqExp
 		} else {
@@ -611,10 +686,29 @@ func parse(src []token) {
 		return result
 	}
 
-	statement = func() ast {
+	getStatement = func() ast {
 		var result ast
 
 		switch {
+		case accept(tCURLY_LEFT):
+			blSt := blockStatement{}
+			blSt.statements = make([]ast, 0)
+			for !accept(tCURLY_RIGHT) {
+				blSt.statements = append(blSt.statements, getStatement())
+			}
+			result = blSt
+
+		case accept(tIF):
+			ifSt := ifStatement{}
+			expect(tPAREN_LEFT)
+			ifSt.test = getExpression()
+			expect(tPAREN_RIGHT)
+			ifSt.consequent = getStatement()
+			if accept(tELSE) {
+				ifSt.alternate = getStatement()
+			}
+			result = ifSt
+
 		// tVAR tNAME [tEQUALS add] {tCOMMA tNAME [tEQUALS add]} tSEMI
 		case accept(tVAR):
 			keyword := lexeme()
@@ -624,12 +718,12 @@ func parse(src []token) {
 				decl := declaration{}
 				decl.name = lexeme()
 				if accept(tASSIGN) {
-					decl.value = bin5()
+					decl.value = getOr()
 				}
 				varSt.decls = append(varSt.decls, decl)
 			}
-			expect(tSEMI)
 			result = varSt
+			expect(tSEMI)
 
 		// // tIMPORT [tNAME tFROM] [tCURLY_LEFT [tDEFAULT tAS tNAME] [tNAME {tCOMMA tNAME}] [tCOMMA] tCURLY_RIGHT tFROM] tSTRING;
 		case accept(tIMPORT):
@@ -673,19 +767,30 @@ func parse(src []token) {
 			expect(tSEMI)
 
 		default:
-			result = expression()
+			result = getExpression()
+			expect(tSEMI)
 		}
 		return result
 	}
 
-	for t.tType != tEND_OF_INPUT {
-		root := statement()
-		fmt.Println(root)
+	getProgram := func() ast {
+		result := program{}
+		result.statements = make([]ast, 0)
+
+		for !accept(tEND_OF_INPUT) {
+			result.statements = append(result.statements, getStatement())
+		}
+
+		return result
 	}
+
+	result := getProgram()
+
+	fmt.Println(result)
 }
 
 func main() {
-	src := []byte("foo['bar' + 3]")
+	src := []byte("foo = { bar: 3213, baz: 123 };")
 
 	tokens := lex(src)
 	//fmt.Println(tokens)
