@@ -38,7 +38,7 @@ func lex(src []byte) []token {
 	}
 
 	isWhitespace := func(c byte) bool {
-		return c == ' ' || c == '\n'
+		return c == ' '
 	}
 
 	isStringParen := func(c byte) bool {
@@ -52,6 +52,8 @@ func lex(src []byte) []token {
 
 		if i < len(src) {
 			c = src[i]
+		} else {
+			c = ' '
 		}
 	}
 
@@ -65,7 +67,7 @@ func lex(src []byte) []token {
 	}
 
 	substr := func(start, end int) string {
-		if start >= 0 && end < len(src) {
+		if start >= 0 && end <= len(src) {
 			return string(src[start:end])
 		}
 		return ""
@@ -109,6 +111,10 @@ func lex(src []byte) []token {
 			eat(tSTRING)
 			end()
 
+		case c == '\n':
+			eat(tNEWLINE)
+			end()
+
 		case isWhitespace(c):
 			skip()
 
@@ -116,6 +122,13 @@ func lex(src []byte) []token {
 			for c != '\n' {
 				skip()
 			}
+
+		case substr(i, i+2) == "/*":
+			for substr(i, i+2) != "*/" {
+				skip()
+			}
+			skip()
+			skip()
 
 		default:
 			threeOp := substr(i, i+3)
@@ -140,7 +153,8 @@ func lex(src []byte) []token {
 		}
 	}
 
-	eat(tUNDEFINED)
+	eat(tEND_OF_INPUT)
+	end()
 
 	return tokens
 }
@@ -260,6 +274,9 @@ func transformIntoModule(tokens []token, resolvedPath string) ([]token, []import
 
 	for i < len(tokens) {
 		switch t.tType {
+		case tNEWLINE:
+			skip()
+
 		case tIMPORT:
 			jsImport := importFileInfo{}
 			jsImport.vars = make([]string, 0)
@@ -315,7 +332,11 @@ func transformIntoModule(tokens []token, resolvedPath string) ([]token, []import
 				}
 			} else {
 				for t.tType != tSEMI {
-					if t.tType == tNAME {
+					if t.tType == tFUNCTION {
+						eat()
+						fileExports.vars = append(fileExports.vars, t)
+						break
+					} else if t.tType == tNAME {
 						fileExports.vars = append(fileExports.vars, t)
 					}
 					eat()
