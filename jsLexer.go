@@ -14,6 +14,16 @@ func (t token) String() string {
 	return fmt.Sprintf("{%v, \"%v\"}", t.tType, t.lexeme)
 }
 
+func isNumber(c byte) bool {
+	return c >= '0' && c <= '9'
+}
+
+func isLetter(c byte) bool {
+	return (c >= 'A' && c <= 'Z') ||
+		(c >= 'a' && c <= 'z') ||
+		(c == '_') || (c == '$')
+}
+
 func lex(src []byte) []token {
 	tokens := make([]token, 0)
 	if len(src) == 0 {
@@ -26,16 +36,6 @@ func lex(src []byte) []token {
 
 	i := 0
 	c := src[i]
-
-	isNumber := func(c byte) bool {
-		return c >= '0' && c <= '9'
-	}
-
-	isLetter := func(c byte) bool {
-		return (c >= 'A' && c <= 'Z') ||
-			(c >= 'a' && c <= 'z') ||
-			(c == '_') || (c == '$') || (c == '@')
-	}
 
 	isWhitespace := func(c byte) bool {
 		return c == ' '
@@ -112,7 +112,8 @@ func lex(src []byte) []token {
 			end()
 
 		case c == '\n':
-			eat(tNEWLINE)
+			skip()
+			//eat(tNEWLINE)
 			end()
 
 		case isWhitespace(c):
