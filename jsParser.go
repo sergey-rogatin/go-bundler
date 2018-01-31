@@ -218,7 +218,7 @@ type blockStatement struct {
 func (bs blockStatement) String() string {
 	result := "{"
 	for _, st := range bs.statements {
-		result += st.String() + ";"
+		result += st.String()
 	}
 	result += "}"
 	return result
@@ -272,7 +272,12 @@ type returnStatement struct {
 }
 
 func (re returnStatement) String() string {
-	return "return " + re.value.String()
+	result := "return"
+	if re.value != nil {
+		result += re.value.String()
+	}
+	result += ";"
+	return result
 }
 
 type program struct {
@@ -334,10 +339,12 @@ func parse(src []token) {
 		}
 	}
 
-	accept := func(tType tokenType) bool {
-		if t.tType == tType {
-			next()
-			return true
+	accept := func(tTypes ...tokenType) bool {
+		for _, tType := range tTypes {
+			if t.tType == tType {
+				next()
+				return true
+			}
 		}
 		return false
 	}
@@ -369,67 +376,6 @@ func parse(src []token) {
 		getSpread,
 		getExpression grammar
 	)
-
-	makeUnaryExp := func(ops []tokenType, leftType grammar, isPostfix bool) grammar {
-		var expFunc grammar
-
-		expFunc = func() ast {
-			var result ast
-
-			var value ast
-			if isPostfix {
-				value = leftType()
-			}
-			for _, op := range ops {
-				if accept(op) {
-					unExpr := unaryExpression{}
-					unExpr.operator = lexeme()
-					if isPostfix {
-						unExpr.value = value
-					} else {
-						unExpr.value = leftType()
-					}
-					unExpr.isPostfix = isPostfix
-					result = unExpr
-				}
-			}
-			if result == nil && isPostfix {
-				result = value
-			} else if result == nil {
-				result = leftType()
-			}
-
-			return result
-		}
-
-		return expFunc
-	}
-
-	makeBinExp := func(ops []tokenType, leftType grammar) grammar {
-		var expFunc grammar
-
-		expFunc = func() ast {
-			var result ast
-
-			left := leftType()
-			for _, op := range ops {
-				if accept(op) {
-					be := binaryExpression{}
-					be.left = left
-					be.operator = lexeme()
-					be.right = expFunc()
-					result = be
-				}
-			}
-			if result == nil {
-				result = left
-			}
-
-			return result
-		}
-
-		return expFunc
-	}
 
 	getFunctionExpression := func(isDeclaration bool) functionExpression {
 		funcExpr := functionExpression{}
@@ -467,8 +413,8 @@ func parse(src []token) {
 				prop.isCalculated = true
 				prop.key = getExpression()
 				expect(tBRACKET_RIGHT)
-				if src[i+1].tType != tCOLON {
-					panic("Expected tCOLON, got " + src[i+1].tType.String())
+				if src[i].tType != tCOLON {
+					panic("Expected tCOLON, got " + src[i].tType.String())
 				}
 			} else if accept(tNAME) {
 				prop.key = atomValue{lexeme()}
@@ -590,8 +536,40 @@ func parse(src []token) {
 		return result
 	}
 
-	getPostfixUnary = makeUnaryExp([]tokenType{tINC, tDEC}, getFunctionCall, true)
-	getPrefixUnary = makeUnaryExp([]tokenType{tNOT, tBITWISE_NOT, tPLUS, tMINUS, tINC, tDEC, tTYPEOF, tVOID, tDELETE}, getPostfixUnary, false)
+	getPostfixUnary = func() ast {
+		var result ast
+
+		value := getFunctionCall()
+		if accept(tINC, tDEC) {
+			unExp := unaryExpression{}
+			unExp.isPostfix = true
+			unExp.operator = lexeme()
+			unExp.value = value
+			result = unExp
+		} else {
+			result = value
+		}
+
+		return result
+	}
+
+	getPrefixUnary = func() ast {
+		var result ast
+
+		if accept(
+			tNOT, tBITWISE_NOT, tPLUS, tMINUS,
+			tINC, tDEC, tTYPEOF, tVOID, tDELETE,
+		) {
+			unExp := unaryExpression{}
+			unExp.operator = lexeme()
+			unExp.value = getPostfixUnary()
+			result = unExp
+		} else {
+			result = getPostfixUnary()
+		}
+
+		return result
+	}
 
 	getBinaryExp = func() ast {
 		opStack := make([]token, 0)
@@ -654,9 +632,9 @@ func parse(src []token) {
 		if accept(tQUESTION) {
 			condExp := conditionalExpression{}
 			condExp.test = test
-			condExp.consequent = getBinaryExp()
+			condExp.consequent = getCond()
 			expect(tCOLON)
-			condExp.alternate = getBinaryExp()
+			condExp.alternate = getCond()
 			result = condExp
 		} else {
 			result = test
@@ -665,14 +643,37 @@ func parse(src []token) {
 		return result
 	}
 
-	// TODO dont assign to literals
-	getAssign = makeBinExp([]tokenType{
-		tASSIGN, tPLUS_ASSIGN, tMINUS_ASSIGN, tMULT_ASSIGN, tDIV_ASSIGN,
-		tBITWISE_SHIFT_LEFT_ASSIGN, tBITWISE_SHIFT_RIGHT_ASSIGN, tBITWISE_SHIFT_RIGHT_ZERO_ASSIGN,
-		tBITWISE_AND_ASSIGN, tBITWISE_XOR_ASSIGN, tBITWISE_OR_ASSIGN,
-	}, getCond)
-	getYield = makeBinExp([]tokenType{tYIELD, tYIELD_STAR}, getAssign)
-	getSpread = makeUnaryExp([]tokenType{tSPREAD}, getYield, false)
+	getAssign = func() ast {
+		var result ast
+
+		// TODO dont assign to literals
+		left := getCond()
+		if accept(
+			tASSIGN, tPLUS_ASSIGN, tMINUS_ASSIGN, tMULT_ASSIGN, tDIV_ASSIGN,
+			tBITWISE_SHIFT_LEFT_ASSIGN, tBITWISE_SHIFT_RIGHT_ASSIGN, tBITWISE_SHIFT_RIGHT_ZERO_ASSIGN,
+			tBITWISE_AND_ASSIGN, tBITWISE_OR_ASSIGN, tBITWISE_XOR_ASSIGN,
+		) {
+			binExpr := binaryExpression{}
+			binExpr.operator = lexeme()
+			binExpr.left = left
+			binExpr.right = getAssign()
+			result = binExpr
+		} else {
+			result = left
+		}
+
+		return result
+	}
+
+	// TODO:
+	// yield
+	// spread
+	getYield = func() ast {
+		return getAssign()
+	}
+	getSpread = func() ast {
+		return getYield()
+	}
 
 	getExpression = func() ast {
 		var result ast
@@ -761,7 +762,7 @@ func parse(src []token) {
 				decl := declaration{}
 				decl.name = lexeme()
 				if accept(tASSIGN) {
-					decl.value = getBinaryExp()
+					decl.value = getSpread()
 				}
 				varSt.decls = append(varSt.decls, decl)
 			}
@@ -814,9 +815,11 @@ func parse(src []token) {
 
 		case accept(tRETURN):
 			rs := returnStatement{}
-			rs.value = getExpression()
+			if !accept(tSEMI) {
+				rs.value = getExpression()
+				expect(tSEMI)
+			}
 			result = rs
-			expect(tSEMI)
 
 		default:
 			result = getExpression()
