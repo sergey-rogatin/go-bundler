@@ -17,22 +17,49 @@ func isValidPropertyName(name string) bool {
 	return true
 }
 
-type atomValue struct {
-	val string
+type atom struct {
+	val token
 }
 
-func (av atomValue) String() string {
-	return av.val
+func (av atom) String() string {
+	return av.val.lexeme
 }
 
 type binaryExpression struct {
 	left     ast
 	right    ast
-	operator string
+	operator token
 }
 
 func (be binaryExpression) String() string {
-	return "(" + be.left.String() + be.operator + be.right.String() + ")"
+	result := ""
+	op := operatorTable[be.operator.tType]
+	switch t := be.left.(type) {
+	case binaryExpression:
+		leftPrec := operatorTable[t.operator.tType].precedence
+		if leftPrec < op.precedence || (leftPrec == op.precedence && op.isRightAssociative) {
+			result += "(" + t.String() + ")"
+		} else {
+			result += t.String()
+		}
+	default:
+		result += t.String()
+	}
+
+	result += be.operator.lexeme
+
+	switch t := be.right.(type) {
+	case binaryExpression:
+		rightPrec := operatorTable[t.operator.tType].precedence
+		if rightPrec <= op.precedence {
+			result += "(" + t.String() + ")"
+		} else {
+			result += t.String()
+		}
+	default:
+		result += t.String()
+	}
+	return result
 }
 
 type unaryExpression struct {
@@ -90,7 +117,7 @@ func (fc functionCall) String() string {
 		}
 	}
 	result += ")"
-	return result
+	return result + ""
 }
 
 type memberExpression struct {
@@ -365,7 +392,8 @@ func parse(src []token) {
 	var (
 		getStatement,
 		getAtom,
-		getNewOrMember,
+		getMember,
+		getConstructorCall,
 		getFunctionCall,
 		getPostfixUnary,
 		getPrefixUnary,
@@ -374,7 +402,7 @@ func parse(src []token) {
 		getAssign,
 		getYield,
 		getSpread,
-		getExpression grammar
+		getSequence grammar
 	)
 
 	getFunctionExpression := func(isDeclaration bool) functionExpression {
@@ -411,19 +439,19 @@ func parse(src []token) {
 			prop := objectProperty{}
 			if accept(tBRACKET_LEFT) {
 				prop.isCalculated = true
-				prop.key = getExpression()
+				prop.key = getSequence()
 				expect(tBRACKET_RIGHT)
 				if src[i].tType != tCOLON {
 					panic("Expected tCOLON, got " + src[i].tType.String())
 				}
 			} else if accept(tNAME) {
-				prop.key = atomValue{lexeme()}
+				prop.key = atom{src[i-1]}
 			} else if isValidPropertyName(t.lexeme) || t.tType == tNUMBER || t.tType == tSTRING {
 				if src[i+1].tType != tCOLON {
 					panic("Expected tCOLON, got " + src[i+1].tType.String())
 				}
 				next()
-				prop.key = atomValue{lexeme()}
+				prop.key = atom{src[i-1]}
 			}
 			if accept(tCOLON) {
 				prop.value = getSpread()
@@ -441,10 +469,10 @@ func parse(src []token) {
 		var result ast
 		switch {
 		case accept(tNUMBER) || accept(tSTRING) || accept(tNAME) || accept(tTRUE) || accept(tFALSE):
-			result = atomValue{lexeme()}
+			result = atom{src[i-1]}
 
 		case accept(tPAREN_LEFT):
-			result = getExpression()
+			result = getSequence()
 			expect(tPAREN_RIGHT)
 
 		case accept(tCURLY_LEFT):
@@ -454,54 +482,59 @@ func parse(src []token) {
 			result = getFunctionExpression(false)
 
 		default:
-			panic("whoops")
+			panic("Ooos! Unexpected token " + t.tType.String())
 		}
 
 		return result
 	}
 
-	getNewOrMember = func() ast {
+	getMember = func() ast {
 		var result ast
 
-		switch {
-		case accept(tNEW):
+		object := getAtom()
+		if accept(tDOT) {
+			me := memberExpression{}
+			me.object = object
+			if !isValidPropertyName(t.lexeme) {
+				panic(t.lexeme + " is not a valid property name")
+			}
+			next()
+			me.property = atom{src[i-1]}
+			result = me
+		} else if accept(tBRACKET_LEFT) {
+			me := memberExpression{}
+			me.object = object
+			me.property = getSequence()
+			me.isCalculated = true
+			expect(tBRACKET_RIGHT)
+			result = me
+		} else {
+			result = object
+		}
+
+		return result
+	}
+
+	getConstructorCall = func() ast {
+		var result ast
+
+		if accept(tNEW) {
 			fc := functionCall{}
-			fc.name = getNewOrMember()
+			fc.name = getConstructorCall()
 			fc.isConstructor = true
 			fc.args = make([]ast, 0)
 			if accept(tPAREN_LEFT) {
-				for ok := true; ok; ok = accept(tCOMMA) {
-					if accept(tNAME) {
-						fc.args = append(fc.args, getSpread())
-					} else {
+				for !accept(tPAREN_RIGHT) {
+					fc.args = append(fc.args, getSpread())
+					if !accept(tCOMMA) {
+						expect(tPAREN_RIGHT)
 						break
 					}
 				}
-				expect(tPAREN_RIGHT)
 			}
 			result = fc
-
-		default:
-			object := getAtom()
-			if accept(tDOT) {
-				me := memberExpression{}
-				me.object = object
-				if !isValidPropertyName(t.lexeme) {
-					panic(t.lexeme + " is not a valid property name")
-				}
-				next()
-				me.property = atomValue{lexeme()}
-				result = me
-			} else if accept(tBRACKET_LEFT) {
-				me := memberExpression{}
-				me.object = object
-				me.property = getExpression()
-				me.isCalculated = true
-				expect(tBRACKET_RIGHT)
-				result = me
-			} else {
-				result = object
-			}
+		} else {
+			result = getMember()
 		}
 
 		return result
@@ -510,20 +543,18 @@ func parse(src []token) {
 	getFunctionCall = func() ast {
 		var result ast
 
-		funcName := getNewOrMember()
+		funcName := getConstructorCall()
 		switch {
 		case accept(tPAREN_LEFT):
 			fc := functionCall{}
 			fc.name = funcName
 			fc.args = make([]ast, 0)
-			for !accept(tPAREN_RIGHT) {
-				arg := getSpread()
-				fc.args = append(fc.args, arg)
-				if arg != nil {
-					if accept(tCOMMA) {
-						if t.tType == tCOMMA {
-							panic("Expected tPAREN_RIGHT, got tCOMMA")
-						}
+			if accept(tPAREN_LEFT) {
+				for !accept(tPAREN_RIGHT) {
+					fc.args = append(fc.args, getSpread())
+					if !accept(tCOMMA) {
+						expect(tPAREN_RIGHT)
+						break
 					}
 				}
 			}
@@ -581,7 +612,7 @@ func parse(src []token) {
 			newNode := binaryExpression{}
 			newNode.right = outputStack[len(outputStack)-1]
 			newNode.left = outputStack[len(outputStack)-2]
-			newNode.operator = t.lexeme
+			newNode.operator = t
 
 			outputStack = outputStack[:len(outputStack)-2]
 			outputStack = append(outputStack, newNode)
@@ -654,7 +685,7 @@ func parse(src []token) {
 			tBITWISE_AND_ASSIGN, tBITWISE_OR_ASSIGN, tBITWISE_XOR_ASSIGN,
 		) {
 			binExpr := binaryExpression{}
-			binExpr.operator = lexeme()
+			binExpr.operator = src[i-1]
 			binExpr.left = left
 			binExpr.right = getAssign()
 			result = binExpr
@@ -675,7 +706,7 @@ func parse(src []token) {
 		return getYield()
 	}
 
-	getExpression = func() ast {
+	getSequence = func() ast {
 		var result ast
 
 		firstInSeq := getSpread()
@@ -729,7 +760,7 @@ func parse(src []token) {
 		case accept(tWHILE):
 			wlSt := whileStatement{}
 			expect(tPAREN_LEFT)
-			wlSt.test = getExpression()
+			wlSt.test = getSequence()
 			expect(tPAREN_RIGHT)
 			wlSt.body = getStatement()
 			result = wlSt
@@ -745,7 +776,7 @@ func parse(src []token) {
 		case accept(tIF):
 			ifSt := ifStatement{}
 			expect(tPAREN_LEFT)
-			ifSt.test = getExpression()
+			ifSt.test = getSequence()
 			expect(tPAREN_RIGHT)
 			ifSt.consequent = getStatement()
 			if accept(tELSE) {
@@ -816,13 +847,13 @@ func parse(src []token) {
 		case accept(tRETURN):
 			rs := returnStatement{}
 			if !accept(tSEMI) {
-				rs.value = getExpression()
+				rs.value = getSequence()
 				expect(tSEMI)
 			}
 			result = rs
 
 		default:
-			result = getExpression()
+			result = getSequence()
 			expect(tSEMI)
 		}
 		return result
