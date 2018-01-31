@@ -137,6 +137,7 @@ type objectProperty struct {
 	key          ast
 	value        ast
 	isCalculated bool
+	isNotName    bool
 }
 
 type objectLiteral struct {
@@ -161,6 +162,22 @@ func (ol objectLiteral) String() string {
 		}
 	}
 	result += "}"
+	return result
+}
+
+type arrayLiteral struct {
+	items []ast
+}
+
+func (al arrayLiteral) String() string {
+	result := "["
+	for i, item := range al.items {
+		result += item.String()
+		if i < len(al.items)-1 {
+			result += ","
+		}
+	}
+	result += "]"
 	return result
 }
 
@@ -383,8 +400,12 @@ func parse(src []token) {
 		panic(fmt.Sprintf("\nExpected %s, got %s\n", tType, t.tType))
 	}
 
-	lexeme := func() string {
+	getLexeme := func() string {
 		return src[i-1].lexeme
+	}
+
+	getToken := func() token {
+		return src[i-1]
 	}
 
 	type grammar func() ast
@@ -405,22 +426,13 @@ func parse(src []token) {
 		getSequence grammar
 	)
 
-	getFunctionExpression := func(isDeclaration bool) functionExpression {
+	getFunctionExpression := func() functionExpression {
 		funcExpr := functionExpression{}
-		funcExpr.isDeclaration = isDeclaration
 		funcExpr.args = make([]string, 0)
-		if isDeclaration {
-			expect(tNAME)
-			funcExpr.name = lexeme()
-		} else if accept(tNAME) {
-			funcExpr.name = lexeme()
-		} else {
-			funcExpr.name = "anonymous"
-		}
 		expect(tPAREN_LEFT)
 		for !accept(tPAREN_RIGHT) {
 			if accept(tNAME) {
-				funcExpr.args = append(funcExpr.args, lexeme())
+				funcExpr.args = append(funcExpr.args, getLexeme())
 			}
 			if !accept(tCOMMA) {
 				expect(tPAREN_RIGHT)
@@ -432,31 +444,50 @@ func parse(src []token) {
 		return funcExpr
 	}
 
+	getObjectKey := func() objectProperty {
+		prop := objectProperty{}
+
+		if accept(tBRACKET_LEFT) {
+			prop.isCalculated = true
+			prop.key = getSequence()
+			expect(tBRACKET_RIGHT)
+		} else if accept(tNAME) {
+			prop.key = atom{getToken()}
+		} else if isValidPropertyName(t.lexeme) || t.tType == tNUMBER || t.tType == tSTRING {
+			prop.isNotName = true
+			next()
+			prop.key = atom{getToken()}
+		}
+
+		return prop
+	}
+
 	getObjectLiteral := func() objectLiteral {
 		objLit := objectLiteral{}
 		objLit.properties = make([]objectProperty, 0)
 		for !accept(tCURLY_RIGHT) {
-			prop := objectProperty{}
-			if accept(tBRACKET_LEFT) {
-				prop.isCalculated = true
-				prop.key = getSequence()
-				expect(tBRACKET_RIGHT)
-				if src[i].tType != tCOLON {
-					panic("Expected tCOLON, got " + src[i].tType.String())
+			prop := getObjectKey()
+			if prop.isCalculated || prop.isNotName {
+				if src[i].tType == tPAREN_LEFT {
+					funcExpr := getFunctionExpression()
+					prop.value = funcExpr
+				} else {
+					expect(tCOLON)
+					prop.value = getSpread()
 				}
-			} else if accept(tNAME) {
-				prop.key = atom{src[i-1]}
-			} else if isValidPropertyName(t.lexeme) || t.tType == tNUMBER || t.tType == tSTRING {
-				if src[i+1].tType != tCOLON {
-					panic("Expected tCOLON, got " + src[i+1].tType.String())
+			} else {
+				if src[i].tType == tPAREN_LEFT {
+					funcExpr := getFunctionExpression()
+					prop.value = funcExpr
+				} else {
+					if accept(tCOLON) {
+						prop.value = getSpread()
+					}
 				}
-				next()
-				prop.key = atom{src[i-1]}
 			}
-			if accept(tCOLON) {
-				prop.value = getSpread()
-			}
+
 			objLit.properties = append(objLit.properties, prop)
+
 			if !accept(tCOMMA) {
 				expect(tCURLY_RIGHT)
 				break
@@ -465,11 +496,24 @@ func parse(src []token) {
 		return objLit
 	}
 
+	getArrayLiteral := func() arrayLiteral {
+		arrayLit := arrayLiteral{}
+		arrayLit.items = make([]ast, 0)
+		for !accept(tBRACKET_RIGHT) {
+			arrayLit.items = append(arrayLit.items, getSpread())
+			if !accept(tCOMMA) {
+				expect(tBRACKET_RIGHT)
+				break
+			}
+		}
+		return arrayLit
+	}
+
 	getAtom = func() ast {
 		var result ast
 		switch {
-		case accept(tNUMBER) || accept(tSTRING) || accept(tNAME) || accept(tTRUE) || accept(tFALSE):
-			result = atom{src[i-1]}
+		case accept(tTHIS, tNUMBER, tSTRING, tNAME, tTRUE, tFALSE):
+			result = atom{getToken()}
 
 		case accept(tPAREN_LEFT):
 			result = getSequence()
@@ -479,7 +523,18 @@ func parse(src []token) {
 			result = getObjectLiteral()
 
 		case accept(tFUNCTION):
-			result = getFunctionExpression(false)
+			var name string
+			if accept(tNAME) {
+				name = getLexeme()
+			} else {
+				name = ""
+			}
+			funcExpr := getFunctionExpression()
+			funcExpr.name = name
+			result = funcExpr
+
+		case accept(tBRACKET_LEFT):
+			result = getArrayLiteral()
 
 		default:
 			panic("Ooos! Unexpected token " + t.tType.String())
@@ -492,22 +547,29 @@ func parse(src []token) {
 		var result ast
 
 		object := getAtom()
-		if accept(tDOT) {
-			me := memberExpression{}
-			me.object = object
-			if !isValidPropertyName(t.lexeme) {
-				panic(t.lexeme + " is not a valid property name")
+
+		if accept(tDOT) || src[i].tType == tBRACKET_LEFT {
+			atomStack := []ast{object}
+			isCalcStack := []bool{src[i].tType == tBRACKET_LEFT}
+
+			dotCounter := 0
+
+			for ok := true; ok; ok = accept(tDOT) || src[i].tType == tBRACKET_LEFT {
+				objProp := getObjectKey()
+				atomStack = append(atomStack, objProp.key)
+				isCalcStack = append(isCalcStack, src[i].tType == tBRACKET_LEFT)
+				dotCounter++
 			}
-			next()
-			me.property = atom{src[i-1]}
-			result = me
-		} else if accept(tBRACKET_LEFT) {
-			me := memberExpression{}
-			me.object = object
-			me.property = getSequence()
-			me.isCalculated = true
-			expect(tBRACKET_RIGHT)
-			result = me
+
+			for i := 0; i < dotCounter; i++ {
+				newMe := memberExpression{}
+				newMe.object = atomStack[i]
+				newMe.property = atomStack[i+1]
+				newMe.isCalculated = isCalcStack[i]
+				atomStack[i+1] = newMe
+			}
+
+			result = atomStack[dotCounter]
 		} else {
 			result = object
 		}
@@ -549,13 +611,11 @@ func parse(src []token) {
 			fc := functionCall{}
 			fc.name = funcName
 			fc.args = make([]ast, 0)
-			if accept(tPAREN_LEFT) {
-				for !accept(tPAREN_RIGHT) {
-					fc.args = append(fc.args, getSpread())
-					if !accept(tCOMMA) {
-						expect(tPAREN_RIGHT)
-						break
-					}
+			for !accept(tPAREN_RIGHT) {
+				fc.args = append(fc.args, getSpread())
+				if !accept(tCOMMA) {
+					expect(tPAREN_RIGHT)
+					break
 				}
 			}
 			result = fc
@@ -574,7 +634,7 @@ func parse(src []token) {
 		if accept(tINC, tDEC) {
 			unExp := unaryExpression{}
 			unExp.isPostfix = true
-			unExp.operator = lexeme()
+			unExp.operator = getLexeme()
 			unExp.value = value
 			result = unExp
 		} else {
@@ -592,7 +652,7 @@ func parse(src []token) {
 			tINC, tDEC, tTYPEOF, tVOID, tDELETE,
 		) {
 			unExp := unaryExpression{}
-			unExp.operator = lexeme()
+			unExp.operator = getLexeme()
 			unExp.value = getPostfixUnary()
 			result = unExp
 		} else {
@@ -744,7 +804,14 @@ func parse(src []token) {
 				expVar := exportedVar{}
 				expVar.name = "default"
 				if accept(tFUNCTION) {
-					decl := getFunctionExpression(false)
+					var name string
+					if accept(tNAME) {
+						name = getLexeme()
+					} else {
+						name = ""
+					}
+					decl := getFunctionExpression()
+					decl.name = name
 					expVar.value = decl
 				} else if accept(tCLASS) {
 
@@ -786,12 +853,12 @@ func parse(src []token) {
 
 		// tVAR tNAME [tEQUALS add] {tCOMMA tNAME [tEQUALS add]} tSEMI
 		case accept(tVAR) || accept(tCONST) || accept(tLET):
-			keyword := lexeme()
+			keyword := getLexeme()
 			varSt := varStatement{make([]declaration, 0), keyword}
 			for ok := true; ok; ok = accept(tCOMMA) {
 				expect(tNAME)
 				decl := declaration{}
-				decl.name = lexeme()
+				decl.name = getLexeme()
 				if accept(tASSIGN) {
 					decl.value = getSpread()
 				}
@@ -807,7 +874,7 @@ func parse(src []token) {
 			// import { foo, bar as i } from "module-name";
 			if accept(tNAME) {
 				defVar := importedVar{}
-				defVar.pseudonym = lexeme()
+				defVar.pseudonym = getLexeme()
 				defVar.name = "default"
 
 				impSt.vars = append(impSt.vars, defVar)
@@ -820,10 +887,10 @@ func parse(src []token) {
 			if accept(tCURLY_LEFT) {
 				for accept(tNAME) || accept(tDEFAULT) {
 					extVar := importedVar{}
-					extVar.name = lexeme()
+					extVar.name = getLexeme()
 					if accept(tAS) {
 						expect(tNAME)
-						extVar.pseudonym = lexeme()
+						extVar.pseudonym = getLexeme()
 					}
 					impSt.vars = append(impSt.vars, extVar)
 					if src[i+2].tType == tNAME || src[i+2].tType == tDEFAULT {
@@ -837,12 +904,16 @@ func parse(src []token) {
 				expect(tFROM)
 			}
 			expect(tSTRING)
-			impSt.path = lexeme()
+			impSt.path = getLexeme()
 			result = impSt
 			expect(tSEMI)
 
 		case accept(tFUNCTION):
-			result = getFunctionExpression(true)
+			expect(tNAME)
+			name := getLexeme()
+			funcDecl := getFunctionExpression()
+			funcDecl.name = name
+			result = funcDecl
 
 		case accept(tRETURN):
 			rs := returnStatement{}
