@@ -291,6 +291,38 @@ type ast interface {
 	String() string
 }
 
+type operatorInfo struct {
+	precedence         int
+	isRightAssociative bool
+}
+
+var operatorTable = map[tokenType]operatorInfo{
+	tOR:                       operatorInfo{5, false},
+	tAND:                      operatorInfo{6, false},
+	tBITWISE_OR:               operatorInfo{7, false},
+	tBITWISE_XOR:              operatorInfo{8, false},
+	tBITWISE_AND:              operatorInfo{9, false},
+	tEQUALS:                   operatorInfo{10, false},
+	tNOT_EQUALS:               operatorInfo{10, false},
+	tEQUALS_STRICT:            operatorInfo{10, false},
+	tNOT_EQUALS_STRICT:        operatorInfo{10, false},
+	tLESS:                     operatorInfo{11, false},
+	tLESS_EQUALS:              operatorInfo{11, false},
+	tGREATER:                  operatorInfo{11, false},
+	tGREATER_EQUALS:           operatorInfo{11, false},
+	tIN:                       operatorInfo{11, false},
+	tINSTANCEOF:               operatorInfo{11, false},
+	tBITWISE_SHIFT_LEFT:       operatorInfo{12, false},
+	tBITWISE_SHIFT_RIGHT:      operatorInfo{12, false},
+	tBITWISE_SHIFT_RIGHT_ZERO: operatorInfo{12, false},
+	tPLUS:  operatorInfo{13, false},
+	tMINUS: operatorInfo{13, false},
+	tMULT:  operatorInfo{14, false},
+	tDIV:   operatorInfo{14, false},
+	tMOD:   operatorInfo{14, false},
+	tEXP:   operatorInfo{15, true},
+}
+
 func parse(src []token) {
 	i := 0
 	t := src[i]
@@ -330,17 +362,7 @@ func parse(src []token) {
 		getFunctionCall,
 		getPostfixUnary,
 		getPrefixUnary,
-		getExponent,
-		getMultDiv,
-		getAddSub,
-		getShift,
-		getCompare,
-		getEquals,
-		getBitAnd,
-		getBitXor,
-		getBitOr,
-		getAnd,
-		getOr,
+		getBinaryExp,
 		getCond,
 		getAssign,
 		getYield,
@@ -571,28 +593,70 @@ func parse(src []token) {
 	getPostfixUnary = makeUnaryExp([]tokenType{tINC, tDEC}, getFunctionCall, true)
 	getPrefixUnary = makeUnaryExp([]tokenType{tNOT, tBITWISE_NOT, tPLUS, tMINUS, tINC, tDEC, tTYPEOF, tVOID, tDELETE}, getPostfixUnary, false)
 
-	getExponent = makeBinExp([]tokenType{tEXP}, getPrefixUnary)
-	getMultDiv = makeBinExp([]tokenType{tMULT, tDIV, tMOD}, getExponent)
-	getAddSub = makeBinExp([]tokenType{tPLUS, tMINUS}, getMultDiv)
-	getShift = makeBinExp([]tokenType{tBITWISE_SHIFT_LEFT, tBITWISE_SHIFT_RIGHT, tBITWISE_SHIFT_RIGHT_ZERO}, getAddSub)
-	getCompare = makeBinExp([]tokenType{tLESS, tLESS_EQUALS, tGREATER, tGREATER_EQUALS, tIN, tINSTANCEOF}, getShift)
-	getEquals = makeBinExp([]tokenType{tEQUALS, tNOT_EQUALS, tEQUALS_STRICT, tNOT_EQUALS_STRICT}, getCompare)
-	getBitAnd = makeBinExp([]tokenType{tBITWISE_AND}, getEquals)
-	getBitXor = makeBinExp([]tokenType{tBITWISE_XOR}, getBitAnd)
-	getBitOr = makeBinExp([]tokenType{tBITWISE_OR}, getBitXor)
-	getAnd = makeBinExp([]tokenType{tAND}, getBitOr)
-	getOr = makeBinExp([]tokenType{tOR}, getAnd)
+	getBinaryExp = func() ast {
+		opStack := make([]token, 0)
+		outputStack := make([]ast, 0)
+
+		var root *binaryExpression
+
+		addNode := func(t token) {
+			newNode := binaryExpression{}
+			newNode.right = outputStack[len(outputStack)-1]
+			newNode.left = outputStack[len(outputStack)-2]
+			newNode.operator = t.lexeme
+
+			outputStack = outputStack[:len(outputStack)-2]
+			outputStack = append(outputStack, newNode)
+			root = &newNode
+		}
+
+		for {
+			outputStack = append(outputStack, getPrefixUnary())
+
+			op, ok := operatorTable[t.tType]
+			if !ok {
+				break
+			}
+
+			for {
+				if len(opStack) > 0 {
+					opToken := opStack[len(opStack)-1]
+
+					opFromStack := operatorTable[opToken.tType]
+					if opFromStack.precedence > op.precedence || (opFromStack.precedence == op.precedence && !op.isRightAssociative) {
+						addNode(opToken)
+						opStack = opStack[:len(opStack)-1]
+					} else {
+						break
+					}
+				} else {
+					break
+				}
+			}
+			opStack = append(opStack, t)
+			next()
+		}
+
+		for i := len(opStack) - 1; i >= 0; i-- {
+			addNode(opStack[i])
+		}
+
+		if root != nil {
+			return *root
+		}
+		return outputStack[len(outputStack)-1]
+	}
 
 	getCond = func() ast {
 		var result ast
 
-		test := getOr()
+		test := getBinaryExp()
 		if accept(tQUESTION) {
 			condExp := conditionalExpression{}
 			condExp.test = test
-			condExp.consequent = getOr()
+			condExp.consequent = getBinaryExp()
 			expect(tCOLON)
-			condExp.alternate = getOr()
+			condExp.alternate = getBinaryExp()
 			result = condExp
 		} else {
 			result = test
@@ -601,13 +665,14 @@ func parse(src []token) {
 		return result
 	}
 
+	// TODO dont assign to literals
 	getAssign = makeBinExp([]tokenType{
 		tASSIGN, tPLUS_ASSIGN, tMINUS_ASSIGN, tMULT_ASSIGN, tDIV_ASSIGN,
 		tBITWISE_SHIFT_LEFT_ASSIGN, tBITWISE_SHIFT_RIGHT_ASSIGN, tBITWISE_SHIFT_RIGHT_ZERO_ASSIGN,
 		tBITWISE_AND_ASSIGN, tBITWISE_XOR_ASSIGN, tBITWISE_OR_ASSIGN,
 	}, getCond)
 	getYield = makeBinExp([]tokenType{tYIELD, tYIELD_STAR}, getAssign)
-	getSpread = makeBinExp([]tokenType{tSPREAD}, getYield)
+	getSpread = makeUnaryExp([]tokenType{tSPREAD}, getYield, false)
 
 	getExpression = func() ast {
 		var result ast
@@ -696,7 +761,7 @@ func parse(src []token) {
 				decl := declaration{}
 				decl.name = lexeme()
 				if accept(tASSIGN) {
-					decl.value = getOr()
+					decl.value = getBinaryExp()
 				}
 				varSt.decls = append(varSt.decls, decl)
 			}

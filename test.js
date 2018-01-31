@@ -1,1 +1,1 @@
-export var foo = 232;
+a || b && c || d;
