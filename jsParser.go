@@ -187,7 +187,7 @@ func (al arrayLiteral) String() string {
 }
 
 type declaration struct {
-	name  string
+	name  ast
 	value ast
 }
 
@@ -199,7 +199,7 @@ type varStatement struct {
 func (vs varStatement) String() string {
 	result := vs.keyword + " "
 	for i, decl := range vs.decls {
-		result += decl.name
+		result += decl.name.String()
 		if decl.value != nil {
 			result += "=" + decl.value.String()
 		}
@@ -344,6 +344,25 @@ func (le lambdaExpression) String() string {
 	return result
 }
 
+type objectPattern struct {
+	properties []objectProperty
+}
+
+func (op objectPattern) String() string {
+	result := "objectPattern"
+	return result
+}
+
+type assignmentPattern struct {
+	left  token
+	right ast
+}
+
+func (ap assignmentPattern) String() string {
+	result := ap.left.lexeme + "=" + ap.right.String()
+	return result
+}
+
 type returnStatement struct {
 	value ast
 }
@@ -461,7 +480,7 @@ func parse(src []token) {
 		getPostfixUnary,
 		getPrefixUnary,
 		getBinaryExp,
-		getCond,
+		getTernary,
 		getAssign,
 		getYield,
 		getSpread,
@@ -815,16 +834,16 @@ func parse(src []token) {
 		return outputStack[len(outputStack)-1]
 	}
 
-	getCond = func() ast {
+	getTernary = func() ast {
 		var result ast
 
 		test := getBinaryExp()
 		if accept(tQUESTION) {
 			condExp := conditionalExpression{}
 			condExp.test = test
-			condExp.consequent = getCond()
+			condExp.consequent = getTernary()
 			expect(tCOLON)
-			condExp.alternate = getCond()
+			condExp.alternate = getTernary()
 			result = condExp
 		} else {
 			result = test
@@ -837,7 +856,7 @@ func parse(src []token) {
 		var result ast
 
 		// TODO dont assign to literals
-		left := getCond()
+		left := getTernary()
 		if accept(
 			tASSIGN, tPLUS_ASSIGN, tMINUS_ASSIGN, tMULT_ASSIGN, tDIV_ASSIGN,
 			tBITWISE_SHIFT_LEFT_ASSIGN, tBITWISE_SHIFT_RIGHT_ASSIGN, tBITWISE_SHIFT_RIGHT_ZERO_ASSIGN,
@@ -906,7 +925,7 @@ func parse(src []token) {
 				varSt := decl.(varStatement)
 				for _, declarator := range varSt.decls {
 					expVar := exportedVar{}
-					expVar.name = declarator.name
+					expVar.name = declarator.name.String()
 					expVar.pseudonym = ""
 					expVar.value = declarator.value
 					exSt.exportedVars = append(exSt.exportedVars, expVar)
@@ -965,9 +984,38 @@ func parse(src []token) {
 			keyword := getLexeme()
 			varSt := varStatement{make([]declaration, 0), keyword}
 			for ok := true; ok; ok = accept(tCOMMA) {
-				expect(tNAME)
 				decl := declaration{}
-				decl.name = getLexeme()
+
+				// descructuring declaration
+				if accept(tCURLY_LEFT) {
+					objPat := objectPattern{}
+					objPat.properties = make([]objectProperty, 0)
+					for !accept(tCURLY_RIGHT) {
+						prop := getObjectKey()
+						if accept(tCOLON) {
+							expect(tNAME)
+							valueName := getToken()
+							if accept(tASSIGN) {
+								assP := assignmentPattern{}
+								assP.left = valueName
+								assP.right = getSpread()
+								prop.value = assP
+							} else {
+								prop.value = valueName
+							}
+						}
+
+						if !accept(tCOMMA) {
+							expect(tCURLY_RIGHT)
+							break
+						}
+					}
+					decl.name = objPat
+				} else {
+					expect(tNAME)
+					decl.name = atom{getToken()}
+				}
+
 				if accept(tASSIGN) {
 					decl.value = getSpread()
 				}
