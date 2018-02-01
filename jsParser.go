@@ -154,8 +154,13 @@ func (ol objectLiteral) String() string {
 		if prop.isCalculated {
 			result += "]"
 		}
+
+		_, valueIsFunction := prop.value.(functionExpression)
+		if prop.value != nil && !valueIsFunction {
+			result += ":"
+		}
 		if prop.value != nil {
-			result += ":" + prop.value.String()
+			result += prop.value.String()
 		}
 		if i < len(ol.properties)-1 {
 			result += ","
@@ -297,10 +302,20 @@ type functionExpression struct {
 	name          string
 	args          []string
 	body          blockStatement
+	isMember      bool
+	isLambda      bool
 }
 
 func (fe functionExpression) String() string {
-	result := "function " + fe.name + "("
+	result := ""
+
+	if !fe.isMember {
+		result += "function"
+	}
+	if fe.name != "" {
+		result += " " + fe.name
+	}
+	result += "("
 	for i, arg := range fe.args {
 		result += arg
 		if i < len(fe.args)-1 {
@@ -311,6 +326,24 @@ func (fe functionExpression) String() string {
 	return result
 }
 
+type lambdaExpression struct {
+	args []string
+	body ast
+}
+
+func (le lambdaExpression) String() string {
+	result := "("
+	for i, arg := range le.args {
+		result += arg
+		if i < len(le.args)-1 {
+			result += ","
+		}
+	}
+	result += ")=>"
+	result += le.body.String()
+	return result
+}
+
 type returnStatement struct {
 	value ast
 }
@@ -318,9 +351,18 @@ type returnStatement struct {
 func (re returnStatement) String() string {
 	result := "return"
 	if re.value != nil {
-		result += re.value.String()
+		result += " " + re.value.String()
 	}
 	result += ";"
+	return result
+}
+
+type expressionStatement struct {
+	expr ast
+}
+
+func (es expressionStatement) String() string {
+	result := es.expr.String() + ";"
 	return result
 }
 
@@ -470,6 +512,7 @@ func parse(src []token) {
 			if prop.isCalculated || prop.isNotName {
 				if src[i].tType == tPAREN_LEFT {
 					funcExpr := getFunctionExpression()
+					funcExpr.isMember = true
 					prop.value = funcExpr
 				} else {
 					expect(tCOLON)
@@ -478,6 +521,7 @@ func parse(src []token) {
 			} else {
 				if src[i].tType == tPAREN_LEFT {
 					funcExpr := getFunctionExpression()
+					funcExpr.isMember = true
 					prop.value = funcExpr
 				} else {
 					if accept(tCOLON) {
@@ -512,12 +556,67 @@ func parse(src []token) {
 	getAtom = func() ast {
 		var result ast
 		switch {
-		case accept(tTHIS, tNUMBER, tSTRING, tNAME, tTRUE, tFALSE):
+		case accept(tNAME):
+			name := getLexeme()
+			if accept(tLAMBDA) {
+				lambdaExpr := lambdaExpression{}
+				lambdaExpr.args = []string{name}
+				if src[i].tType == tCURLY_LEFT {
+					lambdaExpr.body = getStatement()
+				} else {
+					lambdaExpr.body = getSpread()
+				}
+				result = lambdaExpr
+			} else {
+				result = atom{getToken()}
+			}
+		case accept(tTHIS, tNUMBER, tSTRING, tTRUE, tFALSE):
 			result = atom{getToken()}
 
 		case accept(tPAREN_LEFT):
-			result = getSequence()
-			expect(tPAREN_RIGHT)
+			// test if this is a lambda
+			isLambda := true
+			exInd := i
+			for ; src[exInd].tType != tPAREN_RIGHT; exInd++ {
+				if src[exInd].tType != tNAME {
+					isLambda = false
+					break
+				}
+				if src[exInd+1].tType != tCOMMA {
+					exInd++
+					break
+				}
+				exInd++
+			}
+			if src[exInd+1].tType != tLAMBDA {
+				isLambda = false
+			}
+
+			if isLambda {
+				lambdaExpr := lambdaExpression{}
+				lambdaExpr.args = make([]string, 0)
+
+				for !accept(tPAREN_RIGHT) {
+					if accept(tNAME) {
+						lambdaExpr.args = append(lambdaExpr.args, getLexeme())
+					}
+					if !accept(tCOMMA) {
+						expect(tPAREN_RIGHT)
+						break
+					}
+				}
+
+				expect(tLAMBDA)
+				if src[i].tType == tCURLY_LEFT {
+					lambdaExpr.body = getStatement()
+				} else {
+					lambdaExpr.body = getSpread()
+				}
+				result = lambdaExpr
+			} else {
+				result = getSequence()
+				expect(tPAREN_RIGHT)
+			}
 
 		case accept(tCURLY_LEFT):
 			result = getObjectLiteral()
@@ -790,7 +889,19 @@ func parse(src []token) {
 		case accept(tEXPORT):
 			exSt := exportStatement{}
 			exSt.exportedVars = make([]exportedVar, 0)
-			if t.tType == tVAR || t.tType == tCONST || t.tType == tLET {
+
+			if accept(tFUNCTION) {
+				expVar := exportedVar{}
+				name := ""
+				if accept(tNAME) {
+					name = getLexeme()
+				}
+				decl := getFunctionExpression()
+				decl.name = name
+				expVar.value = decl
+				expVar.name = name
+				exSt.exportedVars = append(exSt.exportedVars, expVar)
+			} else if t.tType == tVAR || t.tType == tCONST || t.tType == tLET {
 				decl := getStatement()
 				varSt := decl.(varStatement)
 				for _, declarator := range varSt.decls {
@@ -804,11 +915,9 @@ func parse(src []token) {
 				expVar := exportedVar{}
 				expVar.name = "default"
 				if accept(tFUNCTION) {
-					var name string
+					name := ""
 					if accept(tNAME) {
 						name = getLexeme()
-					} else {
-						name = ""
 					}
 					decl := getFunctionExpression()
 					decl.name = name
@@ -818,9 +927,9 @@ func parse(src []token) {
 				} else {
 					expVar.pseudonym = ""
 					expVar.value = getSpread()
-					exSt.exportedVars = append(exSt.exportedVars, expVar)
 				}
 				exSt.exportedVars = append(exSt.exportedVars, expVar)
+				expect(tSEMI)
 			}
 			result = exSt
 
@@ -924,7 +1033,7 @@ func parse(src []token) {
 			result = rs
 
 		default:
-			result = getSequence()
+			result = expressionStatement{getSequence()}
 			expect(tSEMI)
 		}
 		return result
