@@ -349,17 +349,28 @@ type objectPattern struct {
 }
 
 func (op objectPattern) String() string {
-	result := "objectPattern"
+	result := "{"
+	for i, prop := range op.properties {
+		result += prop.key.String()
+		if prop.value != nil {
+			result += ":" + prop.value.String()
+		}
+
+		if i < len(op.properties)-1 {
+			result += ","
+		}
+	}
+	result += "}"
 	return result
 }
 
 type assignmentPattern struct {
-	left  token
+	left  atom
 	right ast
 }
 
 func (ap assignmentPattern) String() string {
-	result := ap.left.lexeme + "=" + ap.right.String()
+	result := ap.left.String() + "=" + ap.right.String()
 	return result
 }
 
@@ -673,8 +684,8 @@ func parse(src []token) {
 			dotCounter := 0
 
 			for ok := true; ok; ok = accept(tDOT) || src[i].tType == tBRACKET_LEFT {
-				objProp := getObjectKey()
-				atomStack = append(atomStack, objProp.key)
+				objProp := getFunctionCall()
+				atomStack = append(atomStack, objProp)
 				isCalcStack = append(isCalcStack, src[i].tType == tBRACKET_LEFT)
 				dotCounter++
 			}
@@ -997,13 +1008,14 @@ func parse(src []token) {
 							valueName := getToken()
 							if accept(tASSIGN) {
 								assP := assignmentPattern{}
-								assP.left = valueName
+								assP.left = atom{valueName}
 								assP.right = getSpread()
 								prop.value = assP
 							} else {
-								prop.value = valueName
+								prop.value = atom{valueName}
 							}
 						}
+						objPat.properties = append(objPat.properties, prop)
 
 						if !accept(tCOMMA) {
 							expect(tCURLY_RIGHT)
