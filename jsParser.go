@@ -537,6 +537,12 @@ func parse(src []token) {
 		expect(tPAREN_LEFT)
 		args := make([]ast, 0)
 
+		defer func() {
+			if r := recover(); r != nil {
+				args = nil
+			}
+		}()
+
 		for !accept(tPAREN_RIGHT) {
 			if accept(tNAME) {
 				name := atom{getToken()}
@@ -659,7 +665,7 @@ func parse(src []token) {
 			} else {
 				result = atom{getToken()}
 			}
-		case accept(tTHIS, tNUMBER, tSTRING, tTRUE, tFALSE):
+		case accept(tTHIS, tNUMBER, tSTRING, tTRUE, tFALSE, tNULL):
 			result = atom{getToken()}
 
 		case accept(tPAREN_LEFT):
@@ -1175,6 +1181,10 @@ func parse(src []token) {
 				expect(tSEMI)
 			}
 			result = rs
+
+		case accept(tCONTINUE):
+			result = expressionStatement{atom{getToken()}}
+			expect(tSEMI)
 
 		default:
 			result = expressionStatement{getSequence()}
