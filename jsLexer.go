@@ -8,10 +8,12 @@ import (
 type token struct {
 	tType  tokenType
 	lexeme string
+	line   int
+	column int
 }
 
 func (t token) String() string {
-	return fmt.Sprintf("{%v, \"%v\"}", t.tType, t.lexeme)
+	return fmt.Sprintf("{%v, \"%v\", %v:%v}", t.tType, t.lexeme, t.line, t.column)
 }
 
 func isNumber(c byte) bool {
@@ -37,6 +39,9 @@ func lex(src []byte) []token {
 	i := 0
 	c := src[i]
 
+	line := 0
+	column := 0
+
 	isWhitespace := func(c byte) bool {
 		return c == ' '
 	}
@@ -48,6 +53,9 @@ func lex(src []byte) []token {
 	eat := func(tType tokenType) {
 		lastToken.tType = tType
 		lastToken.lexeme = lastToken.lexeme + string(c)
+		lastToken.line = line
+		lastToken.column = column
+		// fmt.Println(lastToken)
 		i++
 
 		if i < len(src) {
@@ -115,6 +123,8 @@ func lex(src []byte) []token {
 			skip()
 			//eat(tNEWLINE)
 			end()
+			line++
+			column = 0
 
 		case isWhitespace(c):
 			skip()
@@ -152,6 +162,7 @@ func lex(src []byte) []token {
 				skip()
 			}
 		}
+		column++
 	}
 
 	eat(tEND_OF_INPUT)
@@ -208,177 +219,100 @@ func transformIntoModule(tokens []token, resolvedPath string) ([]token, []import
 		return result, imports
 	}
 
-	fileExports := exportInfo{}
+	// fileExports := exportInfo{}
 
-	i := 0
-	t := tokens[i]
+	// i := 0
+	// t := tokens[i]
 
-	write := func(tType tokenType, lexeme string) {
-		if tType == tNAME {
-			// check if imported variable
-			for _, imp := range imports {
-				ext := getExtension(imp.resolvedPath)
-				if ext != "js" {
-					continue
-				}
-				if imp.def == lexeme {
-					result = append(result, token{tNAME, imp.exportObjName})
-					result = append(result, token{tDOT, "."})
-					result = append(result, token{tNAME, "default"})
-					return
-				}
-				for _, importVar := range imp.vars {
-					if importVar == lexeme {
-						result = append(result, token{tNAME, imp.exportObjName})
-						result = append(result, token{tDOT, "."})
-						result = append(result, token{tNAME, lexeme})
-						return
-					}
-				}
-			}
-		}
-		result = append(result, token{tType, lexeme})
-	}
+	// write := func(tType tokenType, lexeme string) {
+	// 	if tType == tNAME {
+	// 		// check if imported variable
+	// 		for _, imp := range imports {
+	// 			ext := getExtension(imp.resolvedPath)
+	// 			if ext != "js" {
+	// 				continue
+	// 			}
+	// 			if imp.def == lexeme {
+	// 				result = append(result, token{tNAME, imp.exportObjName})
+	// 				result = append(result, token{tDOT, "."})
+	// 				result = append(result, token{tNAME, "default"})
+	// 				return
+	// 			}
+	// 			for _, importVar := range imp.vars {
+	// 				if importVar == lexeme {
+	// 					result = append(result, token{tNAME, imp.exportObjName})
+	// 					result = append(result, token{tDOT, "."})
+	// 					result = append(result, token{tNAME, lexeme})
+	// 					return
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// 	result = append(result, token{tType, lexeme})
+	// }
 
-	eat := func() {
-		write(t.tType, t.lexeme)
-		i++
-		if i < len(tokens) {
-			t = tokens[i]
-		}
-	}
+	// eat := func() {
+	// 	// write(t.tType, t.lexeme)
+	// 	i++
+	// 	if i < len(tokens) {
+	// 		t = tokens[i]
+	// 	}
+	// }
 
-	skip := func() {
-		i++
-		if i < len(tokens) {
-			t = tokens[i]
-		}
-	}
+	// skip := func() {
+	// 	i++
+	// 	if i < len(tokens) {
+	// 		t = tokens[i]
+	// 	}
+	// }
 
-	back := func() {
-		i--
-		if i > 0 {
-			t = tokens[i]
-		}
-	}
+	// back := func() {
+	// 	i--
+	// 	if i > 0 {
+	// 		t = tokens[i]
+	// 	}
+	// }
 
-	exportObjName := createVarNameFromPath(resolvedPath)
+	// exportObjName := createVarNameFromPath(resolvedPath)
 	// add module pattern
-	write(tVAR, "var")
-	write(tNAME, exportObjName)
-	write(tEQUALS, "=")
-	write(tPAREN_LEFT, "(")
-	write(tFUNCTION, "function")
-	write(tPAREN_LEFT, "(")
-	write(tPAREN_RIGHT, ")")
-	write(tCURLY_LEFT, "{")
+	// write(tVAR, "var")
+	// write(tNAME, exportObjName)
+	// write(tEQUALS, "=")
+	// write(tPAREN_LEFT, "(")
+	// write(tFUNCTION, "function")
+	// write(tPAREN_LEFT, "(")
+	// write(tPAREN_RIGHT, ")")
+	// write(tCURLY_LEFT, "{")
 
-	for i < len(tokens) {
-		switch t.tType {
-		case tNEWLINE:
-			skip()
+	// // append exports object return
+	// write(tRETURN, "return")
+	// write(tCURLY_LEFT, "{")
 
-		case tIMPORT:
-			jsImport := importFileInfo{}
-			jsImport.vars = make([]string, 0)
+	// if len(fileExports.def) > 0 {
+	// 	write(tNAME, "default")
+	// 	write(tCOLON, ":")
 
-			for t.tType != tSEMI {
-				// no curly brace encountered
-				if t.tType == tNAME {
-					jsImport.def = t.lexeme
-				}
-				// destructuring import
-				if t.tType == tCURLY_LEFT {
-					for t.tType != tCURLY_RIGHT {
-						if t.tType == tDEFAULT {
-							skip()                  // default
-							skip()                  // as
-							jsImport.def = t.lexeme // foo
-						} else if t.tType == tNAME {
-							jsImport.vars = append(jsImport.vars, t.lexeme)
-						}
-						skip()
-					}
-				}
-				skip()
-			}
-			// end of import statement found
-			back()
-			importPath := resolveES6ImportPath(t.lexeme, resolvedPath)
-			skip() // "./foo"
-			skip() // ;
+	// 	for _, defToken := range fileExports.def {
+	// 		write(defToken.tType, defToken.lexeme)
+	// 	}
 
-			ext := getExtension(importPath)
-			formattedName := createVarNameFromPath(importPath)
+	// 	write(tCOMMA, ",")
+	// }
 
-			jsImport.resolvedPath = importPath
-			jsImport.exportObjName = formattedName
-			imports = append(imports, jsImport)
+	// for _, varToken := range fileExports.vars {
+	// 	write(varToken.tType, varToken.lexeme)
+	// 	write(tCOMMA, ",")
+	// }
 
-			if ext != "js" {
-				fullFileName := formattedName + "." + ext
-				write(tVAR, "var")
-				write(tNAME, jsImport.def)
-				write(tASSIGN, "=")
-				write(tSTRING, fmt.Sprintf("\"%s\"", fullFileName))
-				write(tSEMI, ";")
-			}
-		case tEXPORT:
-			skip() // export
-			if t.tType == tDEFAULT {
-				skip() // default
-				for t.tType != tSEMI {
-					fileExports.def = append(fileExports.def, t)
-					skip()
-				}
-			} else {
-				for t.tType != tSEMI {
-					if t.tType == tFUNCTION {
-						eat()
-						fileExports.vars = append(fileExports.vars, t)
-						break
-					} else if t.tType == tNAME {
-						fileExports.vars = append(fileExports.vars, t)
-					}
-					eat()
-				}
-				eat()
-			}
+	// write(tCURLY_RIGHT, "}")
+	// write(tSEMI, ";")
 
-		default:
-			eat()
-		}
-	}
-
-	// append exports object return
-	write(tRETURN, "return")
-	write(tCURLY_LEFT, "{")
-
-	if len(fileExports.def) > 0 {
-		write(tNAME, "default")
-		write(tCOLON, ":")
-
-		for _, defToken := range fileExports.def {
-			write(defToken.tType, defToken.lexeme)
-		}
-
-		write(tCOMMA, ",")
-	}
-
-	for _, varToken := range fileExports.vars {
-		write(varToken.tType, varToken.lexeme)
-		write(tCOMMA, ",")
-	}
-
-	write(tCURLY_RIGHT, "}")
-	write(tSEMI, ";")
-
-	// finish module pattern
-	write(tCURLY_RIGHT, "}")
-	write(tPAREN_RIGHT, ")")
-	write(tPAREN_LEFT, "(")
-	write(tPAREN_RIGHT, ")")
-	write(tSEMI, ";")
+	// // finish module pattern
+	// write(tCURLY_RIGHT, "}")
+	// write(tPAREN_RIGHT, ")")
+	// write(tPAREN_LEFT, "(")
+	// write(tPAREN_RIGHT, ")")
+	// write(tSEMI, ";")
 
 	return result, imports
 }

@@ -192,8 +192,9 @@ type declaration struct {
 }
 
 type varStatement struct {
-	decls   []declaration
-	keyword string
+	decls            []declaration
+	keyword          string
+	isInForStatement bool
 }
 
 func (vs varStatement) String() string {
@@ -207,7 +208,9 @@ func (vs varStatement) String() string {
 			result += ","
 		}
 	}
-	result += ";"
+	if !vs.isInForStatement {
+		result += ";"
+	}
 	return result
 }
 
@@ -260,6 +263,36 @@ func (ws whileStatement) String() string {
 	return result
 }
 
+type forStatement struct {
+	init  ast
+	test  ast
+	final ast
+	body  ast
+}
+
+func (fs forStatement) String() string {
+	result := "for (" + fs.init.String()
+	result += fs.test.String() + ";"
+	result += fs.final.String() + ")"
+	result += fs.body.String()
+	return result
+}
+
+type forInOfStatement struct {
+	value    ast
+	iterable ast
+	keyword  string
+	body     ast
+}
+
+func (fio forInOfStatement) String() string {
+	result := "for (" + fio.value.String()
+	result += " " + fio.keyword
+	result += " " + fio.iterable.String() + ")"
+	result += fio.body.String()
+	return result
+}
+
 type blockStatement struct {
 	statements []ast
 }
@@ -300,7 +333,7 @@ func (es exportStatement) String() string {
 type functionExpression struct {
 	isDeclaration bool
 	name          string
-	args          []string
+	args          []ast
 	body          blockStatement
 	isMember      bool
 	isLambda      bool
@@ -317,7 +350,7 @@ func (fe functionExpression) String() string {
 	}
 	result += "("
 	for i, arg := range fe.args {
-		result += arg
+		result += arg.String()
 		if i < len(fe.args)-1 {
 			result += ","
 		}
@@ -327,14 +360,14 @@ func (fe functionExpression) String() string {
 }
 
 type lambdaExpression struct {
-	args []string
+	args []ast
 	body ast
 }
 
 func (le lambdaExpression) String() string {
 	result := "("
 	for i, arg := range le.args {
-		result += arg
+		result += arg.String()
 		if i < len(le.args)-1 {
 			result += ","
 		}
@@ -392,8 +425,10 @@ type expressionStatement struct {
 }
 
 func (es expressionStatement) String() string {
-	result := es.expr.String() + ";"
-	return result
+	if es.expr != nil {
+		return es.expr.String() + ";"
+	}
+	return ";"
 }
 
 type program struct {
@@ -469,7 +504,7 @@ func parse(src []token) {
 		if accept(tType) {
 			return true
 		}
-		panic(fmt.Sprintf("\nExpected %s, got %s\n", tType, t.tType))
+		panic(fmt.Sprintf("\nExpected %s, got %s\n", tType, t))
 	}
 
 	getLexeme := func() string {
@@ -498,19 +533,41 @@ func parse(src []token) {
 		getSequence grammar
 	)
 
-	getFunctionExpression := func() functionExpression {
-		funcExpr := functionExpression{}
-		funcExpr.args = make([]string, 0)
+	getFunctionArgs := func() []ast {
 		expect(tPAREN_LEFT)
+		args := make([]ast, 0)
+
 		for !accept(tPAREN_RIGHT) {
 			if accept(tNAME) {
-				funcExpr.args = append(funcExpr.args, getLexeme())
+				name := atom{getToken()}
+				if accept(tASSIGN) {
+					assP := assignmentPattern{}
+					assP.left = name
+					assP.right = getSpread()
+					args = append(args, assP)
+				} else {
+					args = append(args, name)
+				}
 			}
 			if !accept(tCOMMA) {
 				expect(tPAREN_RIGHT)
 				break
 			}
 		}
+
+		return args
+	}
+
+	getLambdaBody := func() ast {
+		if t.tType == tCURLY_LEFT {
+			return getStatement()
+		}
+		return getSpread()
+	}
+
+	getFunctionExpression := func() functionExpression {
+		funcExpr := functionExpression{}
+		funcExpr.args = getFunctionArgs()
 		body := getStatement()
 		funcExpr.body = body.(blockStatement)
 		return funcExpr
@@ -586,16 +643,18 @@ func parse(src []token) {
 	getAtom = func() ast {
 		var result ast
 		switch {
+		case accept(tSEMI):
+			i--
+			t = src[i]
+			return atom{}
+
 		case accept(tNAME):
-			name := getLexeme()
+			name := atom{getToken()}
+
 			if accept(tLAMBDA) {
 				lambdaExpr := lambdaExpression{}
-				lambdaExpr.args = []string{name}
-				if src[i].tType == tCURLY_LEFT {
-					lambdaExpr.body = getStatement()
-				} else {
-					lambdaExpr.body = getSpread()
-				}
+				lambdaExpr.args = []ast{name}
+				lambdaExpr.body = getLambdaBody()
 				result = lambdaExpr
 			} else {
 				result = atom{getToken()}
@@ -604,46 +663,20 @@ func parse(src []token) {
 			result = atom{getToken()}
 
 		case accept(tPAREN_LEFT):
-			// test if this is a lambda
-			isLambda := true
-			exInd := i
-			for ; src[exInd].tType != tPAREN_RIGHT; exInd++ {
-				if src[exInd].tType != tNAME {
-					isLambda = false
-					break
-				}
-				if src[exInd+1].tType != tCOMMA {
-					exInd++
-					break
-				}
-				exInd++
-			}
-			if src[exInd+1].tType != tLAMBDA {
-				isLambda = false
-			}
+			prevPos := i
 
-			if isLambda {
+			i--
+			t = src[i]
+			args := getFunctionArgs()
+
+			if accept(tLAMBDA) {
 				lambdaExpr := lambdaExpression{}
-				lambdaExpr.args = make([]string, 0)
-
-				for !accept(tPAREN_RIGHT) {
-					if accept(tNAME) {
-						lambdaExpr.args = append(lambdaExpr.args, getLexeme())
-					}
-					if !accept(tCOMMA) {
-						expect(tPAREN_RIGHT)
-						break
-					}
-				}
-
-				expect(tLAMBDA)
-				if src[i].tType == tCURLY_LEFT {
-					lambdaExpr.body = getStatement()
-				} else {
-					lambdaExpr.body = getSpread()
-				}
+				lambdaExpr.args = args
+				lambdaExpr.body = getLambdaBody()
 				result = lambdaExpr
 			} else {
+				i = prevPos
+				t = src[i]
 				result = getSequence()
 				expect(tPAREN_RIGHT)
 			}
@@ -666,7 +699,7 @@ func parse(src []token) {
 			result = getArrayLiteral()
 
 		default:
-			panic("Ooos! Unexpected token " + t.tType.String())
+			panic("Ooos! Unexpected token " + t.String())
 		}
 
 		return result
@@ -731,6 +764,8 @@ func parse(src []token) {
 		return result
 	}
 
+	// TODO: default function params
+	// TODO: for loop
 	getFunctionCall = func() ast {
 		var result ast
 
@@ -912,13 +947,103 @@ func parse(src []token) {
 		return result
 	}
 
+	getVarDeclaration := func() varStatement {
+		keyword := getLexeme()
+		varSt := varStatement{make([]declaration, 0), keyword, false}
+		for ok := true; ok; ok = accept(tCOMMA) {
+			decl := declaration{}
+
+			// descructuring declaration
+			if accept(tCURLY_LEFT) {
+				objPat := objectPattern{}
+				objPat.properties = make([]objectProperty, 0)
+				for !accept(tCURLY_RIGHT) {
+					prop := getObjectKey()
+					if accept(tCOLON) {
+						expect(tNAME)
+						valueName := getToken()
+						if accept(tASSIGN) {
+							assP := assignmentPattern{}
+							assP.left = atom{valueName}
+							assP.right = getSpread()
+							prop.value = assP
+						} else {
+							prop.value = atom{valueName}
+						}
+					}
+					objPat.properties = append(objPat.properties, prop)
+
+					if !accept(tCOMMA) {
+						expect(tCURLY_RIGHT)
+						break
+					}
+				}
+				decl.name = objPat
+			} else {
+				expect(tNAME)
+				decl.name = atom{getToken()}
+			}
+
+			if accept(tASSIGN) {
+				decl.value = getSpread()
+			}
+			varSt.decls = append(varSt.decls, decl)
+		}
+		return varSt
+	}
+
 	getStatement = func() ast {
 		var result ast
 
 		switch {
+
+		case accept(tFOR):
+			expect(tPAREN_LEFT)
+
+			var init ast
+			if accept(tVAR, tCONST, tLET) {
+				decl := getVarDeclaration()
+				decl.isInForStatement = true
+				init = decl
+			} else {
+				init = getSequence()
+			}
+
+			if accept(tIN, tOF) {
+				fio := forInOfStatement{}
+				if vs, ok := init.(varStatement); ok {
+					if len(vs.decls) > 1 {
+						panic("Invalid left-hand expression \"" + vs.String() + "\"")
+					}
+				}
+				fio.value = init
+				fio.keyword = getLexeme()
+				fio.iterable = getSpread()
+				expect(tPAREN_RIGHT)
+				fio.body = getStatement()
+				result = fio
+			} else {
+				fs := forStatement{}
+				fs.init = init
+				expect(tSEMI)
+				fs.test = getSequence()
+				expect(tSEMI)
+				if !accept(tPAREN_RIGHT) {
+					fs.final = getSequence()
+					expect(tPAREN_RIGHT)
+				} else {
+					fs.final = atom{}
+				}
+				fs.body = getStatement()
+				result = fs
+			}
+
+		case accept(tSEMI):
+			result = expressionStatement{nil}
+
 		case accept(tEXPORT):
-			exSt := exportStatement{}
-			exSt.exportedVars = make([]exportedVar, 0)
+			es := exportStatement{}
+			es.exportedVars = make([]exportedVar, 0)
 
 			if accept(tFUNCTION) {
 				expVar := exportedVar{}
@@ -930,7 +1055,7 @@ func parse(src []token) {
 				decl.name = name
 				expVar.value = decl
 				expVar.name = name
-				exSt.exportedVars = append(exSt.exportedVars, expVar)
+				es.exportedVars = append(es.exportedVars, expVar)
 			} else if t.tType == tVAR || t.tType == tCONST || t.tType == tLET {
 				decl := getStatement()
 				varSt := decl.(varStatement)
@@ -939,7 +1064,7 @@ func parse(src []token) {
 					expVar.name = declarator.name.String()
 					expVar.pseudonym = ""
 					expVar.value = declarator.value
-					exSt.exportedVars = append(exSt.exportedVars, expVar)
+					es.exportedVars = append(es.exportedVars, expVar)
 				}
 			} else if accept(tDEFAULT) {
 				expVar := exportedVar{}
@@ -958,10 +1083,10 @@ func parse(src []token) {
 					expVar.pseudonym = ""
 					expVar.value = getSpread()
 				}
-				exSt.exportedVars = append(exSt.exportedVars, expVar)
+				es.exportedVars = append(es.exportedVars, expVar)
 				expect(tSEMI)
 			}
-			result = exSt
+			result = es
 
 		case accept(tWHILE):
 			wlSt := whileStatement{}
@@ -992,48 +1117,7 @@ func parse(src []token) {
 
 		// tVAR tNAME [tEQUALS add] {tCOMMA tNAME [tEQUALS add]} tSEMI
 		case accept(tVAR) || accept(tCONST) || accept(tLET):
-			keyword := getLexeme()
-			varSt := varStatement{make([]declaration, 0), keyword}
-			for ok := true; ok; ok = accept(tCOMMA) {
-				decl := declaration{}
-
-				// descructuring declaration
-				if accept(tCURLY_LEFT) {
-					objPat := objectPattern{}
-					objPat.properties = make([]objectProperty, 0)
-					for !accept(tCURLY_RIGHT) {
-						prop := getObjectKey()
-						if accept(tCOLON) {
-							expect(tNAME)
-							valueName := getToken()
-							if accept(tASSIGN) {
-								assP := assignmentPattern{}
-								assP.left = atom{valueName}
-								assP.right = getSpread()
-								prop.value = assP
-							} else {
-								prop.value = atom{valueName}
-							}
-						}
-						objPat.properties = append(objPat.properties, prop)
-
-						if !accept(tCOMMA) {
-							expect(tCURLY_RIGHT)
-							break
-						}
-					}
-					decl.name = objPat
-				} else {
-					expect(tNAME)
-					decl.name = atom{getToken()}
-				}
-
-				if accept(tASSIGN) {
-					decl.value = getSpread()
-				}
-				varSt.decls = append(varSt.decls, decl)
-			}
-			result = varSt
+			result = getVarDeclaration()
 			expect(tSEMI)
 
 		// // tIMPORT [tNAME tFROM] [tCURLY_LEFT [tDEFAULT tAS tNAME] [tNAME {tCOMMA tNAME}] [tCOMMA] tCURLY_RIGHT tFROM] tSTRING;
