@@ -1,7 +1,7 @@
 {
   "entry": "test/index.js",
-  "templateHTML": "test/template.html",
   "bundleDir": "test/build",
+  "templateHTML": "test/template.html",
   "watchFiles": true,
   "devServer": {
     "enable": true,

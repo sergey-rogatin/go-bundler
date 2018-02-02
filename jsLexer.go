@@ -226,13 +226,31 @@ func transformIntoModule(programAst program, fileName string) (program, []string
 	bs := blockStatement{}
 	bs.statements = []ast{}
 
+	returnExport := objectLiteral{}
+	returnExport.properties = []objectProperty{}
+
 	for _, item := range programAst.statements {
 		switch st := item.(type) {
+
+		case exportStatement:
+			for _, expVar := range st.exportedVars {
+				prop := objectProperty{}
+				prop.key = expVar.name
+				if st.isDeclaration {
+					bs.statements = append(bs.statements, expVar.value)
+				} else {
+					prop.value = expVar.value
+				}
+				returnExport.properties = append(returnExport.properties, prop)
+			}
+
 		case importStatement:
 			resolvedPath := resolveES6ImportPath(st.path, fileName)
 			exportObjName := createVarNameFromPath(resolvedPath)
 
 			fileImports = append(fileImports, resolvedPath)
+			ext := getExtension(resolvedPath)
+
 			if len(st.vars) > 0 {
 				vs := varStatement{}
 				vs.keyword = "var"
@@ -240,9 +258,13 @@ func transformIntoModule(programAst program, fileName string) (program, []string
 				for _, impVar := range st.vars {
 					decl := declaration{}
 					decl.name = impVar.pseudonym
-					decl.value = memberExpression{
-						object:   atom{makeToken(exportObjName)},
-						property: impVar.name,
+					if ext == "js" {
+						decl.value = memberExpression{
+							object:   atom{makeToken(exportObjName)},
+							property: impVar.name,
+						}
+					} else {
+						decl.value = atom{makeToken("\"" + exportObjName + "." + ext + "\"")}
 					}
 					vs.decls = append(vs.decls, decl)
 				}
@@ -253,6 +275,11 @@ func transformIntoModule(programAst program, fileName string) (program, []string
 			bs.statements = append(bs.statements, st)
 		}
 	}
+
+	rs := returnStatement{}
+	rs.value = returnExport
+
+	bs.statements = append(bs.statements, rs)
 
 	fe := functionExpression{}
 	fe.body = bs
@@ -268,26 +295,9 @@ func transformIntoModule(programAst program, fileName string) (program, []string
 	vs.decls = []declaration{decl}
 	vs.keyword = "var"
 
-	fmt.Println(vs)
+	result.statements = append(result.statements, vs)
+
 	return result, fileImports
-}
-
-func writeTokens(tokens []token) []byte {
-	result := make([]byte, 0)
-
-	for i, t := range tokens {
-		tIsKeyword := isKeyword(t)
-
-		if tIsKeyword && i > 0 && (tokens[i-1].tType == tNAME || tokens[i-1].tType == tNUMBER || isKeyword(tokens[i-1])) {
-			result = append(result, ' ')
-		}
-		result = append(result, []byte(t.lexeme)...)
-		if tIsKeyword && i < len(tokens) && (tokens[i+1].tType == tNAME || tokens[i+1].tType == tNUMBER) {
-			result = append(result, ' ')
-		}
-	}
-
-	return result
 }
 
 func loadJsFile(src []byte, filePath string) ([]byte, []string) {

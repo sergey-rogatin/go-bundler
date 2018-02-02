@@ -69,7 +69,19 @@ type unaryExpression struct {
 }
 
 func (ue unaryExpression) String() string {
-	return ue.operator + ue.value.String()
+	result := ""
+	if !ue.isPostfix {
+		result += ue.operator
+	}
+	if _, ok := ue.value.(atom); ok {
+		result += ue.value.String()
+	} else {
+		result += "(" + ue.value.String() + ")"
+	}
+	if ue.isPostfix {
+		result += ue.operator
+	}
+	return result
 }
 
 type sequenceExpression struct {
@@ -155,8 +167,8 @@ func (ol objectLiteral) String() string {
 			result += "]"
 		}
 
-		_, valueIsFunction := prop.value.(functionExpression)
-		if prop.value != nil && !valueIsFunction {
+		fe, valueIsFunction := prop.value.(functionExpression)
+		if prop.value != nil && (!valueIsFunction || !fe.isMember) {
 			result += ":"
 		}
 		if prop.value != nil {
@@ -271,7 +283,7 @@ type forStatement struct {
 }
 
 func (fs forStatement) String() string {
-	result := "for (" + fs.init.String()
+	result := "for (" + fs.init.String() + ";"
 	result += fs.test.String() + ";"
 	result += fs.final.String() + ")"
 	result += fs.body.String()
@@ -307,21 +319,22 @@ func (bs blockStatement) String() string {
 }
 
 type exportedVar struct {
-	name      string
-	pseudonym string
+	name      atom
+	pseudonym atom
 	value     ast
 }
 
 type exportStatement struct {
-	exportedVars []exportedVar
+	exportedVars  []exportedVar
+	isDeclaration bool
 }
 
 func (es exportStatement) String() string {
 	result := "export "
 	for _, exp := range es.exportedVars {
-		result += exp.name
-		if exp.pseudonym != "" {
-			result += " as " + exp.pseudonym
+		result += exp.name.String()
+		if exp.pseudonym.String() != "" {
+			result += " as " + exp.pseudonym.String()
 		}
 		if exp.value != nil {
 			result += " = " + exp.value.String()
@@ -332,7 +345,7 @@ func (es exportStatement) String() string {
 
 type functionExpression struct {
 	isDeclaration bool
-	name          string
+	name          atom
 	args          []ast
 	body          blockStatement
 	isMember      bool
@@ -345,8 +358,8 @@ func (fe functionExpression) String() string {
 	if !fe.isMember {
 		result += "function"
 	}
-	if fe.name != "" {
-		result += " " + fe.name
+	if fe.name.String() != "" {
+		result += " " + fe.name.String()
 	}
 	result += "("
 	for i, arg := range fe.args {
@@ -694,11 +707,11 @@ func parse(src []token) program {
 			result = getObjectLiteral()
 
 		case accept(tFUNCTION):
-			var name string
+			var name atom
 			if accept(tNAME) {
-				name = getLexeme()
+				name = atom{getToken()}
 			} else {
-				name = ""
+				name = atom{token{tType: tNAME, lexeme: ""}}
 			}
 			funcExpr := getFunctionExpression()
 			funcExpr.name = name
@@ -1055,10 +1068,11 @@ func parse(src []token) program {
 			es.exportedVars = make([]exportedVar, 0)
 
 			if accept(tFUNCTION) {
+				es.isDeclaration = true
 				expVar := exportedVar{}
-				name := ""
+				name := atom{token{tType: tNAME, lexeme: ""}}
 				if accept(tNAME) {
-					name = getLexeme()
+					name = atom{getToken()}
 				}
 				decl := getFunctionExpression()
 				decl.name = name
@@ -1066,22 +1080,24 @@ func parse(src []token) program {
 				expVar.name = name
 				es.exportedVars = append(es.exportedVars, expVar)
 			} else if t.tType == tVAR || t.tType == tCONST || t.tType == tLET {
+				es.isDeclaration = true
 				decl := getStatement()
 				varSt := decl.(varStatement)
 				for _, declarator := range varSt.decls {
 					expVar := exportedVar{}
-					expVar.name = declarator.name.String()
-					expVar.pseudonym = ""
+					expVar.name = declarator.name.(atom)
+					expVar.pseudonym = atom{token{tType: tNAME, lexeme: ""}}
 					expVar.value = declarator.value
 					es.exportedVars = append(es.exportedVars, expVar)
 				}
 			} else if accept(tDEFAULT) {
 				expVar := exportedVar{}
-				expVar.name = "default"
+				expVar.name = atom{token{tType: tNAME, lexeme: "default"}}
 				if accept(tFUNCTION) {
-					name := ""
+					es.isDeclaration = true
+					name := atom{token{tType: tNAME, lexeme: ""}}
 					if accept(tNAME) {
-						name = getLexeme()
+						name = atom{getToken()}
 					}
 					decl := getFunctionExpression()
 					decl.name = name
@@ -1089,7 +1105,7 @@ func parse(src []token) program {
 				} else if accept(tCLASS) {
 
 				} else {
-					expVar.pseudonym = ""
+					expVar.pseudonym = atom{token{tType: tNAME, lexeme: ""}}
 					expVar.value = getSpread()
 				}
 				es.exportedVars = append(es.exportedVars, expVar)
@@ -1174,7 +1190,7 @@ func parse(src []token) program {
 
 		case accept(tFUNCTION):
 			expect(tNAME)
-			name := getLexeme()
+			name := atom{getToken()}
 			funcDecl := getFunctionExpression()
 			funcDecl.name = name
 			result = funcDecl

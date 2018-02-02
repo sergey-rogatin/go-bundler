@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -194,61 +197,63 @@ type configJSON struct {
 }
 
 func main() {
-	src, _ := ioutil.ReadFile("test.js")
+	config := configJSON{}
+	config.TemplateHTML = "test/template.html"
+	config.WatchFiles = false
+	config.DevServer.Enable = false
 
-	tokens := lex(src)
-	//fmt.Println(tokens)
-	srcAst := parse(tokens)
-	transformIntoModule(srcAst, "test.js")
+	if len(os.Args) > 1 {
+		configFileName := os.Args[1]
 
-	// config := configJSON{}
-	// config.TemplateHTML = "test/template.html"
-	// config.WatchFiles = false
-	// config.DevServer.Enable = false
+		configFile, err := ioutil.ReadFile(configFileName)
+		if err != nil {
+			fmt.Println("Unable to load config file!")
+			config = configJSON{}
+		}
+		json.Unmarshal(configFile, &config)
+	} else {
+		configFileName := "config.json"
 
-	// if len(os.Args) > 1 {
-	// 	configFileName := os.Args[1]
+		configFile, err := ioutil.ReadFile(configFileName)
+		if err != nil {
+			fmt.Println("Unable to load config file!")
+			config = configJSON{}
+		}
+		json.Unmarshal(configFile, &config)
+	}
 
-	// 	configFile, err := ioutil.ReadFile(configFileName)
-	// 	if err != nil {
-	// 		fmt.Println("Unable to load config file!")
-	// 		config = configJSON{}
-	// 	}
-	// 	json.Unmarshal(configFile, &config)
-	// }
+	// config defaults
+	if config.Entry == "" {
+		config.Entry = "test/index.js"
+	}
+	if config.BundleDir == "" {
+		config.BundleDir = "test/build"
+	}
+	if config.DevServer.Port == 0 {
+		config.DevServer.Port = 8080
+	}
 
-	// // config defaults
-	// if config.Entry == "" {
-	// 	config.Entry = "test/index.js"
-	// }
-	// if config.BundleDir == "" {
-	// 	config.BundleDir = "test/build"
-	// }
-	// if config.DevServer.Port == 0 {
-	// 	config.DevServer.Port = 8080
-	// }
+	entryName := config.Entry
+	bundleName := filepath.Join(config.BundleDir, "bundle.js")
 
-	// entryName := config.Entry
-	// bundleName := filepath.Join(config.BundleDir, "bundle.js")
+	cache := bundleCache{}
+	cache.files = make(map[string]cachedFile)
+	createBundle(entryName, bundleName, &cache)
 
-	// cache := bundleCache{}
-	// cache.files = make(map[string]cachedFile)
-	// createBundle(entryName, bundleName, &cache)
+	if config.TemplateHTML != "" {
+		bundleHTMLTemplate(config.TemplateHTML, bundleName)
+	}
 
-	// if config.TemplateHTML != "" {
-	// 	bundleHTMLTemplate(config.TemplateHTML, bundleName)
-	// }
-
-	// // dev server and watching files
-	// if config.DevServer.Enable {
-	// 	if config.WatchFiles {
-	// 		go watchBundledFiles(&cache, entryName, bundleName)
-	// 	}
-	// 	fmt.Printf("Dev server listening at port %v\n", config.DevServer.Port)
-	// 	server := http.FileServer(http.Dir(config.BundleDir))
-	// 	err := http.ListenAndServe(fmt.Sprintf(":%v", config.DevServer.Port), server)
-	// 	log.Fatal(err)
-	// } else if config.WatchFiles {
-	// 	watchBundledFiles(&cache, entryName, bundleName)
-	// }
+	// dev server and watching files
+	if config.DevServer.Enable {
+		if config.WatchFiles {
+			go watchBundledFiles(&cache, entryName, bundleName)
+		}
+		fmt.Printf("Dev server listening at port %v\n", config.DevServer.Port)
+		server := http.FileServer(http.Dir(config.BundleDir))
+		err := http.ListenAndServe(fmt.Sprintf(":%v", config.DevServer.Port), server)
+		log.Fatal(err)
+	} else if config.WatchFiles {
+		watchBundledFiles(&cache, entryName, bundleName)
+	}
 }
