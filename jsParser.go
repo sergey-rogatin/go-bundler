@@ -215,8 +215,8 @@ func (vs varStatement) String() string {
 }
 
 type importedVar struct {
-	name      string
-	pseudonym string
+	name      atom
+	pseudonym atom
 }
 
 type importStatement struct {
@@ -227,9 +227,9 @@ type importStatement struct {
 func (is importStatement) String() string {
 	result := "import{"
 	for i, v := range is.vars {
-		result += v.name
-		if v.pseudonym != "" {
-			result += " as " + v.pseudonym
+		result += v.name.String()
+		if v.pseudonym.String() != "" {
+			result += " as " + v.pseudonym.String()
 		}
 		if i < len(is.vars)-1 {
 			result += ","
@@ -479,7 +479,7 @@ var operatorTable = map[tokenType]operatorInfo{
 	tEXP:   operatorInfo{15, true},
 }
 
-func parse(src []token) {
+func parse(src []token) program {
 	i := 0
 	t := src[i]
 
@@ -488,6 +488,11 @@ func parse(src []token) {
 		if i < len(src) {
 			t = src[i]
 		}
+	}
+
+	backtrack := func(backIndex int) {
+		i = backIndex
+		t = src[i]
 	}
 
 	accept := func(tTypes ...tokenType) bool {
@@ -671,8 +676,7 @@ func parse(src []token) {
 		case accept(tPAREN_LEFT):
 			prevPos := i
 
-			i--
-			t = src[i]
+			backtrack(i - 1)
 			args := getFunctionArgs()
 
 			if accept(tLAMBDA) {
@@ -681,8 +685,7 @@ func parse(src []token) {
 				lambdaExpr.body = getLambdaBody()
 				result = lambdaExpr
 			} else {
-				i = prevPos
-				t = src[i]
+				backtrack(prevPos)
 				result = getSequence()
 				expect(tPAREN_RIGHT)
 			}
@@ -1133,8 +1136,8 @@ func parse(src []token) {
 			// import { foo, bar as i } from "module-name";
 			if accept(tNAME) {
 				defVar := importedVar{}
-				defVar.pseudonym = getLexeme()
-				defVar.name = "default"
+				defVar.pseudonym = atom{getToken()}
+				defVar.name = atom{token{lexeme: "default", tType: tNAME}}
 
 				impSt.vars = append(impSt.vars, defVar)
 				if src[i+1].tType == tCURLY_LEFT {
@@ -1146,10 +1149,12 @@ func parse(src []token) {
 			if accept(tCURLY_LEFT) {
 				for accept(tNAME) || accept(tDEFAULT) {
 					extVar := importedVar{}
-					extVar.name = getLexeme()
+					extVar.name = atom{getToken()}
 					if accept(tAS) {
 						expect(tNAME)
-						extVar.pseudonym = getLexeme()
+						extVar.pseudonym = atom{getToken()}
+					} else {
+						extVar.pseudonym = atom{getToken()}
 					}
 					impSt.vars = append(impSt.vars, extVar)
 					if src[i+2].tType == tNAME || src[i+2].tType == tDEFAULT {
@@ -1193,7 +1198,7 @@ func parse(src []token) {
 		return result
 	}
 
-	getProgram := func() ast {
+	getProgram := func() program {
 		result := program{}
 		result.statements = make([]ast, 0)
 
@@ -1204,7 +1209,5 @@ func parse(src []token) {
 		return result
 	}
 
-	result := getProgram()
-
-	fmt.Println(result)
+	return getProgram()
 }

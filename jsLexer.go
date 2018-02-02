@@ -211,110 +211,41 @@ func resolveES6ImportPath(importPath, currentFileName string) string {
 	return result
 }
 
-func transformIntoModule(tokens []token, resolvedPath string) ([]token, []importFileInfo) {
-	result := make([]token, 0, len(tokens)+128)
-	imports := make([]importFileInfo, 0)
+func transformIntoModule(programAst program, fileName string) (program, []string) {
+	result := program{}
+	result.statements = []ast{}
+	fileImports := []string{}
 
-	if len(tokens) == 0 {
-		return result, imports
+	for _, item := range programAst.statements {
+		switch st := item.(type) {
+		case importStatement:
+			resolvedPath := resolveES6ImportPath(st.path, fileName)
+			exportObjName := createVarNameFromPath(resolvedPath)
+
+			fileImports = append(fileImports, resolvedPath)
+			if len(st.vars) > 0 {
+				vs := varStatement{}
+				vs.keyword = "var"
+				vs.decls = []declaration{}
+				for _, impVar := range st.vars {
+					decl := declaration{}
+					decl.name = impVar.pseudonym
+					decl.value = memberExpression{
+						object:   atom{token{tType: tNAME, lexeme: exportObjName}},
+						property: impVar.name,
+					}
+					vs.decls = append(vs.decls, decl)
+				}
+				result.statements = append(result.statements, vs)
+			}
+
+		default:
+			result.statements = append(result.statements, st)
+		}
 	}
 
-	// fileExports := exportInfo{}
-
-	// i := 0
-	// t := tokens[i]
-
-	// write := func(tType tokenType, lexeme string) {
-	// 	if tType == tNAME {
-	// 		// check if imported variable
-	// 		for _, imp := range imports {
-	// 			ext := getExtension(imp.resolvedPath)
-	// 			if ext != "js" {
-	// 				continue
-	// 			}
-	// 			if imp.def == lexeme {
-	// 				result = append(result, token{tNAME, imp.exportObjName})
-	// 				result = append(result, token{tDOT, "."})
-	// 				result = append(result, token{tNAME, "default"})
-	// 				return
-	// 			}
-	// 			for _, importVar := range imp.vars {
-	// 				if importVar == lexeme {
-	// 					result = append(result, token{tNAME, imp.exportObjName})
-	// 					result = append(result, token{tDOT, "."})
-	// 					result = append(result, token{tNAME, lexeme})
-	// 					return
-	// 				}
-	// 			}
-	// 		}
-	// 	}
-	// 	result = append(result, token{tType, lexeme})
-	// }
-
-	// eat := func() {
-	// 	// write(t.tType, t.lexeme)
-	// 	i++
-	// 	if i < len(tokens) {
-	// 		t = tokens[i]
-	// 	}
-	// }
-
-	// skip := func() {
-	// 	i++
-	// 	if i < len(tokens) {
-	// 		t = tokens[i]
-	// 	}
-	// }
-
-	// back := func() {
-	// 	i--
-	// 	if i > 0 {
-	// 		t = tokens[i]
-	// 	}
-	// }
-
-	// exportObjName := createVarNameFromPath(resolvedPath)
-	// add module pattern
-	// write(tVAR, "var")
-	// write(tNAME, exportObjName)
-	// write(tEQUALS, "=")
-	// write(tPAREN_LEFT, "(")
-	// write(tFUNCTION, "function")
-	// write(tPAREN_LEFT, "(")
-	// write(tPAREN_RIGHT, ")")
-	// write(tCURLY_LEFT, "{")
-
-	// // append exports object return
-	// write(tRETURN, "return")
-	// write(tCURLY_LEFT, "{")
-
-	// if len(fileExports.def) > 0 {
-	// 	write(tNAME, "default")
-	// 	write(tCOLON, ":")
-
-	// 	for _, defToken := range fileExports.def {
-	// 		write(defToken.tType, defToken.lexeme)
-	// 	}
-
-	// 	write(tCOMMA, ",")
-	// }
-
-	// for _, varToken := range fileExports.vars {
-	// 	write(varToken.tType, varToken.lexeme)
-	// 	write(tCOMMA, ",")
-	// }
-
-	// write(tCURLY_RIGHT, "}")
-	// write(tSEMI, ";")
-
-	// // finish module pattern
-	// write(tCURLY_RIGHT, "}")
-	// write(tPAREN_RIGHT, ")")
-	// write(tPAREN_LEFT, "(")
-	// write(tPAREN_RIGHT, ")")
-	// write(tSEMI, ";")
-
-	return result, imports
+	fmt.Println(result)
+	return result, nil
 }
 
 func writeTokens(tokens []token) []byte {
@@ -337,12 +268,9 @@ func writeTokens(tokens []token) []byte {
 
 func loadJsFile(src []byte, filePath string) ([]byte, []string) {
 	tokens := lex(src)
-	resultTokens, fileImports := transformIntoModule(tokens, filePath)
-	resultBytes := writeTokens(resultTokens)
+	srcAst := parse(tokens)
+	programAst, fileImports := transformIntoModule(srcAst, filePath)
+	resultBytes := []byte(programAst.String())
 
-	fileImportPaths := make([]string, 0)
-	for _, imp := range fileImports {
-		fileImportPaths = append(fileImportPaths, imp.resolvedPath)
-	}
-	return resultBytes, fileImportPaths
+	return resultBytes, fileImports
 }

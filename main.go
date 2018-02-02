@@ -198,7 +198,8 @@ func main() {
 
 	tokens := lex(src)
 	//fmt.Println(tokens)
-	parse(tokens)
+	srcAst := parse(tokens)
+	transformIntoModule(srcAst, "test.js")
 
 	// config := configJSON{}
 	// config.TemplateHTML = "test/template.html"
