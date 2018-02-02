@@ -16,6 +16,11 @@ func (t token) String() string {
 	return fmt.Sprintf("{%v, \"%v\", %v:%v}", t.tType, t.lexeme, t.line, t.column)
 }
 
+func isKeyword(t token) bool {
+	_, ok := keywords[t.lexeme]
+	return ok && t.tType != tNAME
+}
+
 func isNumber(c byte) bool {
 	return c >= '0' && c <= '9'
 }
@@ -249,7 +254,7 @@ func transformIntoModule(programAst program, fileName string) (program, []string
 			exportObjName := createVarNameFromPath(resolvedPath)
 
 			fileImports = append(fileImports, resolvedPath)
-			ext := getExtension(resolvedPath)
+			ext := getFileExtension(resolvedPath)
 
 			if len(st.vars) > 0 {
 				vs := varStatement{}
