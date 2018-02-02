@@ -171,6 +171,11 @@ func lex(src []byte) []token {
 	return tokens
 }
 
+func makeToken(text string) token {
+	res := lex([]byte(text))
+	return res[0]
+}
+
 type importFileInfo struct {
 	exportObjName string
 	resolvedPath  string
@@ -216,6 +221,11 @@ func transformIntoModule(programAst program, fileName string) (program, []string
 	result.statements = []ast{}
 	fileImports := []string{}
 
+	expObj := createVarNameFromPath(fileName)
+
+	bs := blockStatement{}
+	bs.statements = []ast{}
+
 	for _, item := range programAst.statements {
 		switch st := item.(type) {
 		case importStatement:
@@ -231,21 +241,35 @@ func transformIntoModule(programAst program, fileName string) (program, []string
 					decl := declaration{}
 					decl.name = impVar.pseudonym
 					decl.value = memberExpression{
-						object:   atom{token{tType: tNAME, lexeme: exportObjName}},
+						object:   atom{makeToken(exportObjName)},
 						property: impVar.name,
 					}
 					vs.decls = append(vs.decls, decl)
 				}
-				result.statements = append(result.statements, vs)
+				bs.statements = append(bs.statements, vs)
 			}
 
 		default:
-			result.statements = append(result.statements, st)
+			bs.statements = append(bs.statements, st)
 		}
 	}
 
-	fmt.Println(result)
-	return result, nil
+	fe := functionExpression{}
+	fe.body = bs
+
+	fc := functionCall{}
+	fc.name = fe
+
+	decl := declaration{}
+	decl.name = atom{makeToken(expObj)}
+	decl.value = fc
+
+	vs := varStatement{}
+	vs.decls = []declaration{decl}
+	vs.keyword = "var"
+
+	fmt.Println(vs)
+	return result, fileImports
 }
 
 func writeTokens(tokens []token) []byte {
