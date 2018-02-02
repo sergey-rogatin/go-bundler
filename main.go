@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/lvl5hm/goBundler/jsLoader"
 )
 
 type safeFile struct {
@@ -79,9 +81,6 @@ type configJSON struct {
 func main() {
 	// setting up config
 	config := configJSON{}
-	config.TemplateHTML = "test/template.html"
-	config.WatchFiles = false
-	config.DevServer.Enable = false
 
 	configFileName := "config.json"
 	if len(os.Args) > 1 {
@@ -91,9 +90,9 @@ func main() {
 	configFile, err := ioutil.ReadFile(configFileName)
 	if err != nil {
 		fmt.Println("Unable to load config file!")
-		config = configJSON{}
+	} else {
+		json.Unmarshal(configFile, &config)
 	}
-	json.Unmarshal(configFile, &config)
 
 	// config defaults
 	if config.Entry == "" {
@@ -166,14 +165,14 @@ func addFileToBundle(
 	finishedImportsCh chan string,
 	cache *bundleCache,
 ) {
-	ext := getFileExtension(resolvedPath)
+	ext := filepath.Ext(resolvedPath)
 	fileStats, _ := os.Stat(resolvedPath)
 
 	var data []byte
 	var fileImports []string
 
 	switch ext {
-	case "js":
+	case ".js":
 		cachedFile, ok := cache.read(resolvedPath)
 		if ok && cachedFile.lastModTime == fileStats.ModTime() {
 			data = cachedFile.data
@@ -184,12 +183,12 @@ func addFileToBundle(
 				panic(err)
 			}
 
-			data, fileImports = loadJsFile(src, resolvedPath)
+			data, fileImports = jsLoader.LoadFile(src, resolvedPath)
 		}
 
 	default:
 		bundleDir := filepath.Dir(bundleSf.file.Name())
-		dstFileName := bundleDir + "/" + createVarNameFromPath(resolvedPath) + "." + ext
+		dstFileName := bundleDir + "/" + jsLoader.CreateVarNameFromPath(resolvedPath) + ext
 		copyFile(dstFileName, resolvedPath)
 	}
 
@@ -222,24 +221,6 @@ func bundleHTMLTemplate(templateName, bundleName string) {
 
 	bundleDir := filepath.Dir(bundleName)
 	ioutil.WriteFile(filepath.Join(bundleDir, "index.html"), []byte(result), 0666)
-}
-
-func trimQuotesFromString(s string) string {
-	return s[1 : len(s)-1]
-}
-
-func getFileExtension(path string) string {
-	parts := strings.Split(path, ".")
-	if len(parts) > 1 {
-		return parts[len(parts)-1]
-	}
-	return "js"
-}
-
-func createVarNameFromPath(path string) string {
-	newName := strings.Replace(path, "/", "_", -1)
-	newName = strings.Replace(newName, ".", "_", -1)
-	return newName
 }
 
 func copyFile(dst, src string) {
