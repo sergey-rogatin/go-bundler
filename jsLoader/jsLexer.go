@@ -2,6 +2,7 @@ package jsLoader
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -197,13 +198,13 @@ type exportInfo struct {
 	vars []token
 }
 
-func GetFileExtension(path string) string {
-	parts := strings.Split(path, ".")
-	if len(parts) > 1 {
-		return parts[len(parts)-1]
-	}
-	return "js"
-}
+// func GetFileExtension(path string) string {
+// 	parts := strings.Split(path, ".")
+// 	if len(parts) > 1 {
+// 		return parts[len(parts)-1]
+// 	}
+// 	return "js"
+// }
 
 func resolveES6ImportPath(importPath, currentFileName string) string {
 	importPath = trimQuotesFromString(importPath)
@@ -266,7 +267,7 @@ func transformIntoModule(programAst program, fileName string) (program, []string
 			exportObjName := CreateVarNameFromPath(resolvedPath)
 
 			fileImports = append(fileImports, resolvedPath)
-			ext := GetFileExtension(resolvedPath)
+			ext := filepath.Ext(resolvedPath)
 
 			if len(st.vars) > 0 {
 				vd := varDeclaration{}
@@ -277,14 +278,14 @@ func transformIntoModule(programAst program, fileName string) (program, []string
 					decl := declarator{}
 					decl.left = impVar.alias
 
-					if ext == "js" {
+					if ext == ".js" {
 						me := memberExpression{}
 						me.object = atom{makeToken(exportObjName)}
 						me.property.value = impVar.name
 
 						decl.value = me
 					} else {
-						decl.value = atom{makeToken("\"" + exportObjName + "." + ext + "\"")}
+						decl.value = atom{makeToken("\"" + exportObjName + ext + "\"")}
 					}
 					vd.declarations = append(vd.declarations, decl)
 				}

@@ -151,6 +151,8 @@ func getStatement() ast {
 		st = s
 	} else if s, ok := getImportStatement(); ok {
 		st = s
+	} else if s, ok := getSwitchStatement(); ok {
+		st = s
 	} else {
 		st = getExpressionStatement()
 	}
@@ -159,6 +161,73 @@ func getStatement() ast {
 	// 	st = s
 	// }
 	return st
+}
+
+type switchCase struct {
+	condition  ast
+	statements []ast
+}
+
+type switchStatement struct {
+	condition ast
+	cases     []switchCase
+	defCase   []ast
+}
+
+func (sw switchStatement) String() string {
+	result := "switch(" + sw.condition.String() + "){"
+	for _, c := range sw.cases {
+		result += "case " + c.condition.String() + ":"
+		for _, s := range c.statements {
+			result += s.String()
+		}
+	}
+	if sw.defCase != nil {
+		result += "default:"
+		for _, s := range sw.defCase {
+			result += s.String()
+		}
+	}
+	result += "}"
+
+	return result
+}
+
+func getSwitchStatement() (switchStatement, bool) {
+	sw := switchStatement{}
+	if !accept(tSWITCH) {
+		return sw, false
+	}
+
+	expect(tPAREN_LEFT)
+	sw.condition = getSequence()
+	expect(tPAREN_RIGHT)
+	expect(tCURLY_LEFT)
+
+	sw.cases = []switchCase{}
+	for !accept(tCURLY_RIGHT) {
+		if accept(tCASE) {
+			c := switchCase{}
+			c.condition = getSequence()
+			c.statements = []ast{}
+
+			expect(tCOLON)
+			for tok.tType != tCASE && tok.tType != tDEFAULT && tok.tType != tCURLY_RIGHT {
+				c.statements = append(c.statements, getStatement())
+			}
+			sw.cases = append(sw.cases, c)
+
+			if accept(tDEFAULT) {
+				expect(tCOLON)
+				sw.defCase = []ast{}
+				for tok.tType != tCASE && tok.tType != tCURLY_RIGHT {
+					sw.defCase = append(sw.defCase, getStatement())
+				}
+			}
+		}
+	}
+
+	return sw, true
 }
 
 type exportedVar struct {
@@ -966,7 +1035,7 @@ func getPrefixUnary() ast {
 }
 
 func getPostfixUnary() ast {
-	value := getFunctionCall()
+	value := getFunctionCallOrMember(false)
 
 	if accept(tINC, tDEC) {
 		unExp := unaryExpression{}
@@ -1001,30 +1070,40 @@ func (fc functionCall) String() string {
 	return result + ""
 }
 
-func getFunctionCall() ast {
+func getFunctionCallOrMember(noFuncCall bool) ast {
 	funcName := getConstructorCall()
 
-	if accept(tPAREN_LEFT) {
-		fc := functionCall{}
-		fc.name = funcName
-		fc.args = []ast{}
+	for {
+		if !noFuncCall && accept(tPAREN_LEFT) {
+			fc := functionCall{}
+			fc.name = funcName
+			fc.args = []ast{}
 
-		for !accept(tPAREN_RIGHT) {
-			fc.args = append(fc.args, getYield())
-			if !accept(tCOMMA) {
-				expect(tPAREN_RIGHT)
-				break
+			for !accept(tPAREN_RIGHT) {
+				fc.args = append(fc.args, getYield())
+				if !accept(tCOMMA) {
+					expect(tPAREN_RIGHT)
+					break
+				}
 			}
+			funcName = fc
+		} else if accept(tDOT) || tok.tType == tBRACKET_LEFT {
+			me := memberExpression{}
+			me.object = funcName
+			me.property = getPropertyName()
+			funcName = me
+		} else {
+			break
 		}
-		return fc
 	}
+
 	return funcName
 }
 
 func getConstructorCall() ast {
 	if accept(tNEW) {
 		fc := functionCall{}
-		fc.name = getConstructorCall()
+		fc.name = getFunctionCallOrMember(true)
 		fc.isConstructor = true
 
 		if accept(tPAREN_LEFT) {
@@ -1042,7 +1121,7 @@ func getConstructorCall() ast {
 		return fc
 	}
 
-	return getMember()
+	return getAtom()
 }
 
 type memberExpression struct {
@@ -1057,22 +1136,6 @@ func (me memberExpression) String() string {
 	}
 	result += me.property.String()
 	return result
-}
-
-func getMember() ast {
-	object := getAtom()
-
-	me := memberExpression{}
-	if accept(tDOT) || tok.tType == tBRACKET_LEFT {
-		prop := getPropertyName()
-		me.object = getMember()
-		me.property = prop
-	} else {
-		return object
-	}
-
-	me.object = object
-	return me
 }
 
 type atom struct {
@@ -1096,7 +1159,7 @@ func getAtom() ast {
 		return a
 	} else if a, ok := getArrayLiteral(); ok {
 		return a
-	} else if accept(tNAME, tNUMBER, tSTRING, tFALSE, tNULL, tUNDEFINED, tTHIS) {
+	} else if accept(tNAME, tNUMBER, tSTRING, tTRUE, tFALSE, tNULL, tUNDEFINED, tTHIS) {
 		return atom{getToken()}
 	} else {
 		expect(tEND_OF_INPUT)
@@ -1445,16 +1508,6 @@ func getForInStatement(left ast) forInStatement {
 
 	return fs
 }
-
-/*
-
-
-
-
-
-
-
- */
 
 func parse(localSrc []token) program {
 	sourceTokens = localSrc

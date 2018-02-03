@@ -67,6 +67,35 @@ func TestLambdaFalse(t *testing.T) {
 	}
 }
 
+func TestMemberExpression(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			"foo.a[b].c().d;",
+			"foo.a[b].c().d;",
+		},
+		{
+			"new a.v().sd;",
+			"new a.v().sd;",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		ol := getStatement()
+		ok := true
+		if !ok {
+			t.Errorf("Member expression not parsed")
+		} else {
+			if c.res != ol.String() {
+				t.Errorf("Expected %s, got %s", c.res, ol)
+			}
+		}
+	}
+}
+
 func TestObjectLiteral(t *testing.T) {
 	cases := []struct {
 		src string
@@ -95,6 +124,10 @@ func TestObjectLiteral(t *testing.T) {
 		{
 			"{['foo' + 32]() {}}",
 			"{['foo'+32](){}}",
+		},
+		{
+			"{left: 0,top: 0,width: settings.tileSize,height: settings.tileSize}",
+			"{left: 0,top: 0,width: settings.tileSize,height: settings.tileSize}",
 		},
 	}
 
@@ -529,6 +562,34 @@ func TestObjectDestructuring(t *testing.T) {
 		ok := true
 		if !ok {
 			t.Errorf("Destucturing statement not parsed")
+		} else {
+			if c.res != ol.String() {
+				t.Errorf("Expected %s, got %s", c.res, ol)
+			}
+		}
+	}
+}
+
+func TestSwitchStatement(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			"switch(foo){}",
+			"switch(foo){}",
+		},
+		{
+			"switch(foo+23){case a: b;c;d; default: e;f;g;}",
+			"switch(foo+23){case a:b;c;d;default:e;f;g;}",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		ol, ok := getSwitchStatement()
+		if !ok {
+			t.Errorf("Switch statement not parsed")
 		} else {
 			if c.res != ol.String() {
 				t.Errorf("Expected %s, got %s", c.res, ol)
