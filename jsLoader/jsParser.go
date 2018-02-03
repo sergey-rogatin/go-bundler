@@ -1246,13 +1246,21 @@ func getFunctionArgs() ([]declarator, bool) {
 	return args, true
 }
 
+type parenExpression struct {
+	inner ast
+}
+
+func (pe parenExpression) String() string {
+	return "(" + pe.inner.String() + ")"
+}
+
 func getParens() (ast, bool) {
 	if !accept(tPAREN_LEFT) {
 		return nil, false
 	}
 	res := getSequence()
 	expect(tPAREN_RIGHT)
-	return res, true
+	return parenExpression{res}, true
 }
 
 type objectProperty struct {

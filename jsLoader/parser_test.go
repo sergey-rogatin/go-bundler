@@ -548,7 +548,7 @@ func TestObjectDestructuring(t *testing.T) {
 		},
 		{
 			"({}) = foo;",
-			"{}=foo;",
+			"({})=foo;",
 		},
 	}
 
