@@ -17,157 +17,6 @@ func isValidPropertyName(name string) bool {
 	return true
 }
 
-type varStatement struct {
-	decls            []declarator
-	keyword          string
-	isInForStatement bool
-}
-
-func (vs varStatement) String() string {
-	result := vs.keyword + " "
-	for i, decl := range vs.decls {
-		result += decl.name.String()
-		if decl.value != nil {
-			result += "=" + decl.value.String()
-		}
-		if i < len(vs.decls)-1 {
-			result += ","
-		}
-	}
-	if !vs.isInForStatement {
-		result += ";"
-	}
-	return result
-}
-
-type importedVar struct {
-	name      atom
-	pseudonym atom
-}
-
-type importStatement struct {
-	path string
-	vars []importedVar
-}
-
-func (is importStatement) String() string {
-	result := "import{"
-	for i, v := range is.vars {
-		result += v.name.String()
-		if v.pseudonym.String() != "" {
-			result += " as " + v.pseudonym.String()
-		}
-		if i < len(is.vars)-1 {
-			result += ","
-		}
-	}
-	result += "}from" + is.path + ";"
-	return result
-}
-
-type ifStatement struct {
-	test       ast
-	consequent ast
-	alternate  ast
-}
-
-func (is ifStatement) String() string {
-	result := "if(" + is.test.String() + ")" + is.consequent.String()
-	if is.alternate != nil {
-		result += " else " + is.alternate.String()
-	}
-	return result
-}
-
-type whileStatement struct {
-	test ast
-	body ast
-}
-
-func (ws whileStatement) String() string {
-	result := "while(" + ws.test.String() + ")" + ws.body.String()
-	return result
-}
-
-type exportedVar struct {
-	name      atom
-	pseudonym atom
-	value     ast
-}
-
-type exportStatement struct {
-	exportedVars  []exportedVar
-	isDeclaration bool
-}
-
-func (es exportStatement) String() string {
-	result := "export "
-	for _, exp := range es.exportedVars {
-		result += exp.name.String()
-		if exp.pseudonym.String() != "" {
-			result += " as " + exp.pseudonym.String()
-		}
-		if exp.value != nil {
-			result += " = " + exp.value.String()
-		}
-	}
-	return result + ";"
-}
-
-type objectPattern struct {
-	properties []objectProperty
-}
-
-func (op objectPattern) String() string {
-	result := "{"
-	for i, prop := range op.properties {
-		result += prop.key.String()
-		if prop.value != nil {
-			result += ":" + prop.value.String()
-		}
-
-		if i < len(op.properties)-1 {
-			result += ","
-		}
-	}
-	result += "}"
-	return result
-}
-
-type assignmentPattern struct {
-	left  atom
-	right ast
-}
-
-func (ap assignmentPattern) String() string {
-	result := ap.left.String() + "=" + ap.right.String()
-	return result
-}
-
-type returnStatement struct {
-	value ast
-}
-
-func (re returnStatement) String() string {
-	result := "return"
-	if re.value != nil {
-		result += " " + re.value.String()
-	}
-	result += ";"
-	return result
-}
-
-type expressionStatement struct {
-	expr ast
-}
-
-func (es expressionStatement) String() string {
-	if es.expr != nil {
-		return es.expr.String() + ";"
-	}
-	return ";"
-}
-
 type ast interface {
 	String() string
 }
@@ -178,24 +27,35 @@ type operatorInfo struct {
 }
 
 var operatorTable = map[tokenType]operatorInfo{
-	tOR:                       operatorInfo{5, false},
-	tAND:                      operatorInfo{6, false},
-	tBITWISE_OR:               operatorInfo{7, false},
-	tBITWISE_XOR:              operatorInfo{8, false},
-	tBITWISE_AND:              operatorInfo{9, false},
-	tEQUALS:                   operatorInfo{10, false},
-	tNOT_EQUALS:               operatorInfo{10, false},
-	tEQUALS_STRICT:            operatorInfo{10, false},
-	tNOT_EQUALS_STRICT:        operatorInfo{10, false},
-	tLESS:                     operatorInfo{11, false},
-	tLESS_EQUALS:              operatorInfo{11, false},
-	tGREATER:                  operatorInfo{11, false},
-	tGREATER_EQUALS:           operatorInfo{11, false},
-	tIN:                       operatorInfo{11, false},
-	tINSTANCEOF:               operatorInfo{11, false},
-	tBITWISE_SHIFT_LEFT:       operatorInfo{12, false},
-	tBITWISE_SHIFT_RIGHT:      operatorInfo{12, false},
-	tBITWISE_SHIFT_RIGHT_ZERO: operatorInfo{12, false},
+	tASSIGN:                          operatorInfo{3, true},
+	tPLUS_ASSIGN:                     operatorInfo{3, true},
+	tMINUS_ASSIGN:                    operatorInfo{3, true},
+	tMULT_ASSIGN:                     operatorInfo{3, true},
+	tDIV_ASSIGN:                      operatorInfo{3, true},
+	tMOD_ASSIGN:                      operatorInfo{3, true},
+	tBITWISE_SHIFT_LEFT_ASSIGN:       operatorInfo{3, true},
+	tBITWISE_SHIFT_RIGHT_ASSIGN:      operatorInfo{3, true},
+	tBITWISE_SHIFT_RIGHT_ZERO_ASSIGN: operatorInfo{3, true},
+	tBITWISE_AND_ASSIGN:              operatorInfo{3, true},
+	tBITWISE_OR_ASSIGN:               operatorInfo{3, true},
+	tBITWISE_XOR_ASSIGN:              operatorInfo{3, true},
+	tOR:                              operatorInfo{5, false},
+	tAND:                             operatorInfo{6, false},
+	tBITWISE_OR:                      operatorInfo{7, false},
+	tBITWISE_XOR:                     operatorInfo{8, false},
+	tBITWISE_AND:                     operatorInfo{9, false},
+	tEQUALS:                          operatorInfo{10, false},
+	tNOT_EQUALS:                      operatorInfo{10, false},
+	tEQUALS_STRICT:                   operatorInfo{10, false},
+	tNOT_EQUALS_STRICT:               operatorInfo{10, false},
+	tLESS:                            operatorInfo{11, false},
+	tLESS_EQUALS:                     operatorInfo{11, false},
+	tGREATER:                         operatorInfo{11, false},
+	tGREATER_EQUALS:                  operatorInfo{11, false},
+	tINSTANCEOF:                      operatorInfo{11, false},
+	tBITWISE_SHIFT_LEFT:              operatorInfo{12, false},
+	tBITWISE_SHIFT_RIGHT:             operatorInfo{12, false},
+	tBITWISE_SHIFT_RIGHT_ZERO:        operatorInfo{12, false},
 	tPLUS:  operatorInfo{13, false},
 	tMINUS: operatorInfo{13, false},
 	tMULT:  operatorInfo{14, false},
@@ -204,26 +64,25 @@ var operatorTable = map[tokenType]operatorInfo{
 	tEXP:   operatorInfo{15, true},
 }
 
-var src []token
-
-var i = 0
-var t = src[i]
+var sourceTokens []token
+var index int
+var tok token
 
 func next() {
-	i++
-	if i < len(src) {
-		t = src[i]
+	index++
+	if index < len(sourceTokens) {
+		tok = sourceTokens[index]
 	}
 }
 
 func backtrack(backIndex int) {
-	i = backIndex
-	t = src[i]
+	index = backIndex
+	tok = sourceTokens[index]
 }
 
 func accept(tTypes ...tokenType) bool {
 	for _, tType := range tTypes {
-		if t.tType == tType {
+		if tok.tType == tType {
 			next()
 			return true
 		}
@@ -235,15 +94,15 @@ func expect(tType tokenType) bool {
 	if accept(tType) {
 		return true
 	}
-	panic(fmt.Sprintf("\nExpected %s, got %s\n", tType, t))
+	panic(fmt.Sprintf("\nExpected %s, got %s\n", tType, tok))
 }
 
 func getLexeme() string {
-	return src[i-1].lexeme
+	return sourceTokens[index-1].lexeme
 }
 
 func getToken() token {
-	return src[i-1]
+	return sourceTokens[index-1]
 }
 
 //
@@ -280,24 +139,423 @@ func getStatement() ast {
 		st = s
 	} else if s, ok := getWhileStatement(); ok {
 		st = s
-	} else if s, ok := getImportStatement(); ok {
-		st = s
-	} else if s, ok := getExportStatement(); ok {
+	} else if s, ok := getDoWhileStatement(); ok {
 		st = s
 	} else if s, ok := getBlockStatement(); ok {
 		st = s
 	} else if s, ok := getIfStatement(); ok {
 		st = s
-	} else if s, ok := getVarStatement(); ok {
-		st = s
 	} else if s, ok := getFunctionStatement(); ok {
 		st = s
 	} else if s, ok := getReturnStatement(); ok {
 		st = s
-	} else if s, ok := getContinueStatement(); ok {
+	} else if s, ok := getImportStatement(); ok {
 		st = s
+	} else {
+		st = getExpressionStatement()
 	}
+
+	// else if s, ok := getExportStatement(); ok {
+	// 	st = s
+	// }
 	return st
+}
+
+type exportedVar struct {
+	name  ast
+	alias atom
+}
+
+type exportStatement struct {
+	exportedVars []exportedVar
+	declaration  ast
+	source       atom
+	exportAll    bool
+}
+
+func (es exportStatement) String() string {
+	result := "export "
+
+	if es.exportAll {
+		result += "*"
+	} else if len(es.exportedVars) == 1 && es.exportedVars[0].alias.val.lexeme == "default" {
+		result += "default "
+		if es.declaration != nil {
+			result += es.declaration.String()
+		} else {
+			result += es.exportedVars[0].name.String()
+		}
+	} else {
+		if es.declaration != nil {
+			result += es.declaration.String()
+		} else {
+			result += "{"
+			for i, ev := range es.exportedVars {
+				result += ev.name.String()
+				if ev.alias.val.lexeme != "" {
+					result += " as " + ev.alias.val.lexeme
+				}
+				if i < len(es.exportedVars)-1 {
+					result += ","
+				}
+			}
+			result += "}"
+		}
+	}
+
+	if es.source.val.lexeme != "" {
+		result += " from" + es.source.val.lexeme
+	}
+
+	return result + ";"
+}
+
+func getExportStatement() (exportStatement, bool) {
+	es := exportStatement{}
+	if !accept(tEXPORT) {
+		return es, false
+	}
+	es.exportedVars = []exportedVar{}
+
+	if accept(tDEFAULT) {
+		ev := exportedVar{}
+		ev.alias = atom{makeToken("default")}
+
+		if fe, ok := getFunctionExpression(false); ok {
+			if fe.name.val.lexeme != "" {
+				es.declaration = fe
+				ev.name = fe.name
+			} else {
+				ev.name = fe
+			}
+		} else {
+			ev.name = getYield()
+		}
+
+		expect(tSEMI)
+		es.exportedVars = append(es.exportedVars, ev)
+
+	} else if accept(tCURLY_LEFT) {
+		for !accept(tCURLY_RIGHT) {
+			if accept(tNAME) {
+				ev := exportedVar{}
+				ev.name = atom{getToken()}
+				if accept(tAS) {
+					next()
+					ev.alias = atom{getToken()}
+				}
+				es.exportedVars = append(es.exportedVars, ev)
+			}
+
+			if !accept(tCOMMA) {
+				expect(tCURLY_RIGHT)
+				break
+			}
+		}
+
+		if accept(tFROM) {
+			expect(tSTRING)
+			es.source = atom{getToken()}
+		}
+		expect(tSEMI)
+
+	} else if vd, ok := getVarDeclaration(); ok {
+		es.declaration = vd
+		expect(tSEMI)
+		for _, d := range vd.declarations {
+			ev := exportedVar{}
+			ev.name = d.left
+			es.exportedVars = append(es.exportedVars, ev)
+		}
+
+	} else if fs, ok := getFunctionStatement(); ok {
+		es.declaration = fs
+		ev := exportedVar{}
+		ev.name = fs.funcExpr.name
+		es.exportedVars = append(es.exportedVars, ev)
+
+	} else if accept(tMULT) {
+		expect(tFROM)
+		expect(tSTRING)
+		es.source = atom{getToken()}
+		es.exportAll = true
+		expect(tSEMI)
+	}
+
+	return es, true
+}
+
+type importedVar struct {
+	name  atom
+	alias atom
+}
+
+type importStatement struct {
+	path atom
+	vars []importedVar
+	all  atom
+}
+
+func (is importStatement) String() string {
+	result := "import"
+
+	alreadyPrintedIndex := -1
+	// print default import first
+	for i, v := range is.vars {
+		if v.name.val.lexeme == "default" {
+			result += " " + v.alias.val.lexeme
+			alreadyPrintedIndex = i
+			break
+		}
+	}
+
+	// print * import
+	if is.all.val.lexeme != "" {
+		if result != "import" {
+			result += ","
+		}
+		result += "*as " + is.all.val.lexeme
+	}
+
+	// print all other imports
+	if len(is.vars) > 0 && !(len(is.vars) == 1 && alreadyPrintedIndex == 0) {
+		if result != "import" {
+			result += ","
+		}
+		result += "{"
+		for i, v := range is.vars {
+			if i != alreadyPrintedIndex {
+				result += v.name.String()
+				if v.alias.String() != "" {
+					result += " as " + v.alias.String()
+				}
+				if i < len(is.vars)-1 {
+					result += ","
+				}
+			}
+		}
+		result += "}"
+	} else {
+		result += " "
+	}
+	if result != "import " {
+		result += "from"
+	}
+
+	result += is.path.String() + ";"
+	return result
+}
+
+func getImportStatement() (importStatement, bool) {
+	is := importStatement{}
+	if !accept(tIMPORT) {
+		return is, false
+	}
+	is.vars = []importedVar{}
+
+	if accept(tMULT) {
+		expect(tAS)
+		expect(tNAME)
+		is.all = atom{getToken()}
+		expect(tFROM)
+	} else {
+		if accept(tNAME) {
+			v := importedVar{}
+			v.name = atom{makeToken("default")}
+			v.alias = atom{getToken()}
+			is.vars = append(is.vars, v)
+
+			if accept(tCOMMA) {
+				if accept(tMULT) {
+					expect(tAS)
+					expect(tNAME)
+					is.all = atom{getToken()}
+					expect(tFROM)
+				}
+			} else {
+				expect(tFROM)
+			}
+		}
+
+		if accept(tCURLY_LEFT) {
+			for !accept(tCURLY_RIGHT) {
+				if accept(tNAME, tDEFAULT) {
+					v := importedVar{}
+					v.name = atom{getToken()}
+
+					if accept(tAS) {
+						expect(tNAME)
+						v.alias = atom{getToken()}
+					}
+
+					is.vars = append(is.vars, v)
+				}
+
+				if !accept(tCOMMA) {
+					expect(tCURLY_RIGHT)
+					break
+				}
+			}
+
+			expect(tFROM)
+		}
+	}
+
+	expect(tSTRING)
+	is.path = atom{getToken()}
+
+	return is, true
+}
+
+type returnStatement struct {
+	value ast
+}
+
+func (re returnStatement) String() string {
+	result := "return"
+	if re.value != nil {
+		result += " " + re.value.String()
+	}
+	result += ";"
+	return result
+}
+
+func getReturnStatement() (returnStatement, bool) {
+	rs := returnStatement{}
+	if !accept(tRETURN) {
+		return rs, false
+	}
+
+	rs.value = getYield()
+	return rs, true
+}
+
+type functionStatement struct {
+	funcExpr functionExpression
+}
+
+func (fs functionStatement) String() string {
+	return fs.funcExpr.String()
+}
+
+func getFunctionStatement() (functionStatement, bool) {
+	fs := functionStatement{}
+
+	if fe, ok := getFunctionExpression(false); ok {
+		if fe.name.val.lexeme == "" {
+			panic("Function declaration must be named! " + getToken().String())
+		} else {
+			fs.funcExpr = fe
+			return fs, true
+		}
+	}
+
+	return fs, false
+}
+
+type expressionStatement struct {
+	expr ast
+}
+
+func (es expressionStatement) String() string {
+	if es.expr != nil {
+		return es.expr.String() + ";"
+	}
+	return ";"
+}
+
+func getExpressionStatement() expressionStatement {
+	es := expressionStatement{}
+	if vd, ok := getVarDeclaration(); ok {
+		es.expr = vd
+	} else if accept(tCONTINUE, tDEBUGGER, tBREAK) {
+		es.expr = atom{getToken()}
+	} else {
+		es.expr = getSequence()
+	}
+	expect(tSEMI)
+	return es
+}
+
+type ifStatement struct {
+	test       ast
+	consequent ast
+	alternate  ast
+}
+
+func (is ifStatement) String() string {
+	result := "if(" + is.test.String() + ")" + is.consequent.String()
+	if is.alternate != nil {
+		result += " else " + is.alternate.String()
+	}
+	return result
+}
+
+func getIfStatement() (ifStatement, bool) {
+	is := ifStatement{}
+
+	if !accept(tIF) {
+		return is, false
+	}
+	expect(tPAREN_LEFT)
+	is.test = getSequence()
+	expect(tPAREN_RIGHT)
+	is.consequent = getStatement()
+
+	if accept(tELSE) {
+		is.alternate = getStatement()
+	}
+
+	return is, true
+}
+
+type whileStatement struct {
+	test ast
+	body ast
+}
+
+func (ws whileStatement) String() string {
+	result := "while(" + ws.test.String() + ")" + ws.body.String()
+	return result
+}
+
+func getWhileStatement() (whileStatement, bool) {
+	ws := whileStatement{}
+	if !accept(tWHILE) {
+		return ws, false
+	}
+	expect(tPAREN_LEFT)
+	ws.test = getSequence()
+	expect(tPAREN_RIGHT)
+	ws.body = getStatement()
+
+	return ws, true
+}
+
+type doWhileStatement struct {
+	test ast
+	body ast
+}
+
+func (ds doWhileStatement) String() string {
+	result := "do " + ds.body.String() + "while" + "(" + ds.test.String() + ")" + ";"
+	return result
+}
+
+func getDoWhileStatement() (doWhileStatement, bool) {
+	ds := doWhileStatement{}
+
+	if !accept(tDO) {
+		return ds, false
+	}
+
+	ds.body = getStatement()
+	expect(tWHILE)
+	expect(tPAREN_LEFT)
+	ds.test = getSequence()
+	expect(tPAREN_RIGHT)
+
+	return ds, true
 }
 
 type emptyStatement struct{}
@@ -322,7 +580,7 @@ type forStatement struct {
 }
 
 func (fs forStatement) String() string {
-	result := "for (" + fs.init.String() + ";"
+	result := "for(" + fs.init.String() + ";"
 	result += fs.test.String() + ";"
 	result += fs.final.String() + ")"
 	result += fs.body.String()
@@ -338,6 +596,8 @@ func getForStatement() (ast, bool) {
 	var init ast
 	if vd, ok := getVarDeclaration(); ok {
 		init = vd
+	} else if tok.tType == tSEMI {
+		init = atom{token{lexeme: ""}}
 	} else {
 		init = getSequence()
 	}
@@ -351,22 +611,66 @@ func getForStatement() (ast, bool) {
 	fs := forStatement{}
 	fs.init = init
 	expect(tSEMI)
-	fs.test = getSequence()
-	expect(tSEMI)
-	fs.final = getSequence()
-	expect(tPAREN_RIGHT)
+
+	if accept(tSEMI) {
+		fs.test = atom{token{lexeme: ""}}
+	} else {
+		fs.test = getSequence()
+		expect(tSEMI)
+	}
+
+	if accept(tPAREN_RIGHT) {
+		fs.final = atom{token{lexeme: ""}}
+	} else {
+		fs.final = getSequence()
+		expect(tPAREN_RIGHT)
+	}
 	fs.body = getStatement()
 
 	return fs, true
 }
 
+type objectPattern struct {
+	properties []objectProperty
+}
+
+func (op objectPattern) String() string {
+	return objectLiteral.String(objectLiteral(op))
+}
+
+func getObjectPattern() (objectPattern, bool) {
+	op := objectPattern{}
+	if !accept(tCURLY_LEFT) {
+		return op, false
+	}
+	op.properties = []objectProperty{}
+
+	for !accept(tCURLY_RIGHT) {
+		prop := objectProperty{}
+		prop.key = getPropertyName()
+
+		if accept(tCOLON) {
+			prop.value = getAssignment()
+		}
+
+		op.properties = append(op.properties, prop)
+
+		if !accept(tCOMMA) {
+			expect(tCURLY_RIGHT)
+			break
+		}
+	}
+
+	return op, true
+}
+
 type declarator struct {
-	name  atom
+	left  ast
 	value ast
 }
 
 func (d declarator) String() string {
-	result := d.name.String()
+	result := d.left.String()
 	if d.value != nil {
 		result += "=" + d.value.String()
 	}
@@ -377,15 +681,18 @@ func getDeclarator() (declarator, bool) {
 	d := declarator{}
 
 	if accept(tNAME) {
-		d.name = atom{getToken()}
-
-		if accept(tASSIGN) {
-			d.value = getYield()
-		}
-		return d, true
+		d.left = atom{getToken()}
+	} else if op, ok := getObjectPattern(); ok {
+		d.left = op
+	} else {
+		return d, false
 	}
 
-	return d, false
+	if accept(tASSIGN) {
+		d.value = getAssignment()
+	}
+
+	return d, true
 }
 
 type varDeclaration struct {
@@ -394,8 +701,8 @@ type varDeclaration struct {
 }
 
 func (vd varDeclaration) String() string {
-	result := vd.keyword.String()
-	for _, d := range vd.declarations {
+	result := vd.keyword.String() + " "
+	for i, d := range vd.declarations {
 		result += d.String()
 
 		if i < len(vd.declarations)-1 {
@@ -417,7 +724,7 @@ func getVarDeclaration() (varDeclaration, bool) {
 		if d, ok := getDeclarator(); ok {
 			vd.declarations = append(vd.declarations, d)
 		} else {
-			panic("Unexpected token " + t.String())
+			panic("Unexpected token " + tok.String())
 		}
 	}
 
@@ -443,11 +750,11 @@ func getSequence() ast {
 	firstItem := getYield()
 
 	se := sequenceExpression{}
-	se.items = []ast{}
-	for ok := true; ok; ok = accept(tCOMMA) {
+	se.items = []ast{firstItem}
+	for accept(tCOMMA) {
 		se.items = append(se.items, getYield())
 	}
-	if len(se.items) > 0 {
+	if len(se.items) > 1 {
 		return se
 	}
 
@@ -497,7 +804,7 @@ func (be binaryExpression) String() string {
 	switch t := be.right.(type) {
 	case binaryExpression:
 		rightPrec := operatorTable[t.operator.val.tType].precedence
-		if rightPrec <= op.precedence {
+		if (!op.isRightAssociative && rightPrec == op.precedence) || op.precedence > rightPrec {
 			result += "(" + t.String() + ")"
 		} else {
 			result += t.String()
@@ -509,7 +816,18 @@ func (be binaryExpression) String() string {
 }
 
 func getAssignment() ast {
-	// TODO dont assign to literals
+	if op, ok := getObjectPattern(); ok {
+		binExpr := binaryExpression{}
+		binExpr.left = op
+
+		if accept(tASSIGN) {
+			binExpr.operator = atom{getToken()}
+			binExpr.right = getAssignment()
+			return binExpr
+		}
+		return binExpr.left
+	}
+
 	left := getConditional()
 
 	if accept(
@@ -577,7 +895,7 @@ func getBinary() ast {
 	for {
 		outputStack = append(outputStack, getPrefixUnary())
 
-		op, ok := operatorTable[t.tType]
+		op, ok := operatorTable[tok.tType]
 		if !ok {
 			break
 		}
@@ -597,7 +915,7 @@ func getBinary() ast {
 				break
 			}
 		}
-		opStack = append(opStack, t)
+		opStack = append(opStack, tok)
 		next()
 	}
 
@@ -745,7 +1063,7 @@ func getMember() ast {
 	object := getAtom()
 
 	me := memberExpression{}
-	if accept(tDOT) || t.tType == tBRACKET_LEFT {
+	if accept(tDOT) || tok.tType == tBRACKET_LEFT {
 		prop := getPropertyName()
 		me.object = getMember()
 		me.property = prop
@@ -766,6 +1084,8 @@ func (av atom) String() string {
 }
 
 func getAtom() ast {
+	//fmt.Println(tok)
+
 	if a, ok := getLambda(); ok {
 		return a
 	} else if a, ok := getParens(); ok {
@@ -779,8 +1099,9 @@ func getAtom() ast {
 	} else if accept(tNAME, tNUMBER, tSTRING, tFALSE, tNULL, tUNDEFINED, tTHIS) {
 		return atom{getToken()}
 	} else {
-		panic("Unexpected token " + t.String())
+		expect(tEND_OF_INPUT)
 	}
+	return nil
 }
 
 type lambdaExpression struct {
@@ -802,16 +1123,21 @@ func (le lambdaExpression) String() string {
 }
 
 func getLambda() (lambdaExpression, bool) {
-	startPos := i
+	startPos := index
 
 	le := lambdaExpression{}
 	if accept(tNAME) {
-		le.args = []declarator{declarator{name: atom{getToken()}}}
+		le.args = []declarator{declarator{left: atom{getToken()}}}
 	} else if args, ok := getFunctionArgs(); ok {
 		le.args = args
 	}
 
 	if le.args != nil {
+		if !accept(tLAMBDA) {
+			backtrack(startPos)
+			return le, false
+		}
+
 		if bs, ok := getBlockStatement(); ok {
 			le.body = bs
 		} else {
@@ -825,7 +1151,7 @@ func getLambda() (lambdaExpression, bool) {
 }
 
 func getFunctionArgs() ([]declarator, bool) {
-	startPos := i
+	startPos := index
 	if !accept(tPAREN_LEFT) {
 		return nil, false
 	}
@@ -840,7 +1166,10 @@ func getFunctionArgs() ([]declarator, bool) {
 		}
 
 		if !accept(tCOMMA) {
-			expect(tPAREN_RIGHT)
+			if !accept(tPAREN_RIGHT) {
+				backtrack(startPos)
+				return nil, false
+			}
 			break
 		}
 	}
@@ -903,8 +1232,11 @@ func getObjectLiteral() (objectLiteral, bool) {
 			prop.value = getYield()
 		} else if fe, ok := getFunctionExpression(true); ok {
 			prop.value = fe
+		} else if prop.key.isCalculated || prop.key.isNotName {
+			expect(tEND_OF_INPUT)
 		}
 
+		ol.properties = append(ol.properties, prop)
 		if !accept(tCOMMA) {
 			expect(tCURLY_RIGHT)
 			break
@@ -926,21 +1258,26 @@ func (fe functionExpression) String() string {
 	if !fe.isMember {
 		result += "function"
 	}
-	result += fe.name.String()
+	if fe.name.val.lexeme != "" {
+		result += " " + fe.name.String()
+	}
 
+	result += "("
 	for i, arg := range fe.args {
 		result += arg.String()
 		if i < len(fe.args)-1 {
 			result += ","
 		}
 	}
+	result += ")"
+	result += fe.body.String()
 	return result
 }
 
 func getFunctionExpression(isMember bool) (functionExpression, bool) {
 	fe := functionExpression{}
 	if isMember {
-		if t.tType != tPAREN_LEFT {
+		if tok.tType != tPAREN_LEFT {
 			return fe, false
 		}
 
@@ -1045,7 +1382,7 @@ func getPropertyName() propertyName {
 		expect(tBRACKET_RIGHT)
 	} else if accept(tNAME) {
 		name.value = atom{getToken()}
-	} else if isValidPropertyName(t.lexeme) || t.tType == tNUMBER || t.tType == tSTRING {
+	} else if isValidPropertyName(tok.lexeme) || tok.tType == tNUMBER || tok.tType == tSTRING {
 		name.isNotName = true
 		next()
 		name.value = atom{getToken()}
@@ -1089,7 +1426,7 @@ type forInStatement struct {
 
 func (fs forInStatement) String() string {
 	result := "for(" + fs.left.String()
-	result += " of " + fs.right.String() + ")"
+	result += " in " + fs.right.String() + ")"
 	result += fs.body.String()
 	return result
 }
@@ -1119,560 +1456,10 @@ func getForInStatement(left ast) forInStatement {
 
  */
 
-func parse(src []token) program {
-	i := 0
-	t := src[i]
-
-	next := func() {
-		i++
-		if i < len(src) {
-			t = src[i]
-		}
-	}
-
-	backtrack := func(backIndex int) {
-		i = backIndex
-		t = src[i]
-	}
-
-	accept := func(tTypes ...tokenType) bool {
-		for _, tType := range tTypes {
-			if t.tType == tType {
-				next()
-				return true
-			}
-		}
-		return false
-	}
-
-	expect := func(tType tokenType) bool {
-		if accept(tType) {
-			return true
-		}
-		panic(fmt.Sprintf("\nExpected %s, got %s\n", tType, t))
-	}
-
-	getLexeme := func() string {
-		return src[i-1].lexeme
-	}
-
-	getToken := func() token {
-		return src[i-1]
-	}
-
-	type grammar func() ast
-
-	var (
-		getStatement,
-		getAtom,
-		getMember,
-		getConstructorCall,
-		getFunctionCall,
-		getPostfixUnary,
-		getPrefixUnary,
-		getBinaryExp,
-		getTernary,
-		getAssign,
-		getYield,
-		getSpread,
-		getSequence grammar
-	)
-
-	getMember = func() ast {
-		var result ast
-
-		object := getAtom()
-
-		if accept(tDOT) || src[i].tType == tBRACKET_LEFT {
-			atomStack := []ast{object}
-			isCalcStack := []bool{src[i].tType == tBRACKET_LEFT}
-
-			dotCounter := 0
-
-			for ok := true; ok; ok = accept(tDOT) || src[i].tType == tBRACKET_LEFT {
-				objProp := getFunctionCall()
-				atomStack = append(atomStack, objProp)
-				isCalcStack = append(isCalcStack, src[i].tType == tBRACKET_LEFT)
-				dotCounter++
-			}
-
-			for i := 0; i < dotCounter; i++ {
-				newMe := memberExpression{}
-				newMe.object = atomStack[i]
-				newMe.property = atomStack[i+1]
-				newMe.isCalculated = isCalcStack[i]
-				atomStack[i+1] = newMe
-			}
-
-			result = atomStack[dotCounter]
-		} else {
-			result = object
-		}
-
-		return result
-	}
-
-	getConstructorCall = func() ast {
-		var result ast
-
-		if accept(tNEW) {
-			fc := functionCall{}
-			fc.name = getConstructorCall()
-			fc.isConstructor = true
-			fc.args = make([]ast, 0)
-			if accept(tPAREN_LEFT) {
-				for !accept(tPAREN_RIGHT) {
-					fc.args = append(fc.args, getSpread())
-					if !accept(tCOMMA) {
-						expect(tPAREN_RIGHT)
-						break
-					}
-				}
-			}
-			result = fc
-		} else {
-			result = getMember()
-		}
-
-		return result
-	}
-
-	getFunctionCall = func() ast {
-		var result ast
-
-		funcName := getConstructorCall()
-		switch {
-		case accept(tPAREN_LEFT):
-			fc := functionCall{}
-			fc.name = funcName
-			fc.args = make([]ast, 0)
-			for !accept(tPAREN_RIGHT) {
-				fc.args = append(fc.args, getSpread())
-				if !accept(tCOMMA) {
-					expect(tPAREN_RIGHT)
-					break
-				}
-			}
-			result = fc
-
-		default:
-			result = funcName
-		}
-
-		return result
-	}
-
-	getPostfixUnary = func() ast {
-		var result ast
-
-		value := getFunctionCall()
-		if accept(tINC, tDEC) {
-			unExp := unaryExpression{}
-			unExp.isPostfix = true
-			unExp.operator = getLexeme()
-			unExp.value = value
-			result = unExp
-		} else {
-			result = value
-		}
-
-		return result
-	}
-
-	getPrefixUnary = func() ast {
-		var result ast
-
-		if accept(
-			tNOT, tBITWISE_NOT, tPLUS, tMINUS,
-			tINC, tDEC, tTYPEOF, tVOID, tDELETE,
-		) {
-			unExp := unaryExpression{}
-			unExp.operator = getLexeme()
-			unExp.value = getPostfixUnary()
-			result = unExp
-		} else {
-			result = getPostfixUnary()
-		}
-
-		return result
-	}
-
-	getBinaryExp = func() ast {
-		opStack := make([]token, 0)
-		outputStack := make([]ast, 0)
-
-		var root *binaryExpression
-
-		addNode := func(t token) {
-			newNode := binaryExpression{}
-			newNode.right = outputStack[len(outputStack)-1]
-			newNode.left = outputStack[len(outputStack)-2]
-			newNode.operator = t
-
-			outputStack = outputStack[:len(outputStack)-2]
-			outputStack = append(outputStack, newNode)
-			root = &newNode
-		}
-
-		for {
-			outputStack = append(outputStack, getPrefixUnary())
-
-			op, ok := operatorTable[t.tType]
-			if !ok {
-				break
-			}
-
-			for {
-				if len(opStack) > 0 {
-					opToken := opStack[len(opStack)-1]
-
-					opFromStack := operatorTable[opToken.tType]
-					if opFromStack.precedence > op.precedence || (opFromStack.precedence == op.precedence && !op.isRightAssociative) {
-						addNode(opToken)
-						opStack = opStack[:len(opStack)-1]
-					} else {
-						break
-					}
-				} else {
-					break
-				}
-			}
-			opStack = append(opStack, t)
-			next()
-		}
-
-		for i := len(opStack) - 1; i >= 0; i-- {
-			addNode(opStack[i])
-		}
-
-		if root != nil {
-			return *root
-		}
-		return outputStack[len(outputStack)-1]
-	}
-
-	getTernary = func() ast {
-		var result ast
-
-		test := getBinaryExp()
-		if accept(tQUESTION) {
-			condExp := conditionalExpression{}
-			condExp.test = test
-			condExp.consequent = getTernary()
-			expect(tCOLON)
-			condExp.alternate = getTernary()
-			result = condExp
-		} else {
-			result = test
-		}
-
-		return result
-	}
-
-	getAssign = func() ast {
-		var result ast
-
-		// TODO dont assign to literals
-		left := getTernary()
-		if accept(
-			tASSIGN, tPLUS_ASSIGN, tMINUS_ASSIGN, tMULT_ASSIGN, tDIV_ASSIGN,
-			tBITWISE_SHIFT_LEFT_ASSIGN, tBITWISE_SHIFT_RIGHT_ASSIGN, tBITWISE_SHIFT_RIGHT_ZERO_ASSIGN,
-			tBITWISE_AND_ASSIGN, tBITWISE_OR_ASSIGN, tBITWISE_XOR_ASSIGN,
-		) {
-			binExpr := binaryExpression{}
-			binExpr.operator = src[i-1]
-			binExpr.left = left
-			binExpr.right = getAssign()
-			result = binExpr
-		} else {
-			result = left
-		}
-
-		return result
-	}
-
-	// TODO:
-	// yield
-	// spread
-	getYield = func() ast {
-		return getAssign()
-	}
-	getSpread = func() ast {
-		return getYield()
-	}
-
-	getSequence = func() ast {
-		var result ast
-
-		firstInSeq := getSpread()
-		if accept(tCOMMA) {
-			seqExp := sequenceExpression{[]ast{firstInSeq}}
-			for ok := true; ok; ok = accept(tCOMMA) {
-				seqExp.items = append(seqExp.items, getSpread())
-			}
-			result = seqExp
-		} else {
-			result = firstInSeq
-		}
-
-		return result
-	}
-
-	getVarDeclaration := func() varStatement {
-		keyword := getLexeme()
-		varSt := varStatement{make([]declaration, 0), keyword, false}
-		for ok := true; ok; ok = accept(tCOMMA) {
-			decl := declaration{}
-
-			// descructuring declaration
-			if accept(tCURLY_LEFT) {
-				objPat := objectPattern{}
-				objPat.properties = make([]objectProperty, 0)
-				for !accept(tCURLY_RIGHT) {
-					prop := getObjectKey()
-					if accept(tCOLON) {
-						expect(tNAME)
-						valueName := getToken()
-						if accept(tASSIGN) {
-							assP := assignmentPattern{}
-							assP.left = atom{valueName}
-							assP.right = getSpread()
-							prop.value = assP
-						} else {
-							prop.value = atom{valueName}
-						}
-					}
-					objPat.properties = append(objPat.properties, prop)
-
-					if !accept(tCOMMA) {
-						expect(tCURLY_RIGHT)
-						break
-					}
-				}
-				decl.name = objPat
-			} else {
-				expect(tNAME)
-				decl.name = atom{getToken()}
-			}
-
-			if accept(tASSIGN) {
-				decl.value = getSpread()
-			}
-			varSt.decls = append(varSt.decls, decl)
-		}
-		return varSt
-	}
-
-	getStatement = func() ast {
-		var result ast
-
-		switch {
-
-		case accept(tFOR):
-			expect(tPAREN_LEFT)
-
-			var init ast
-			if accept(tVAR, tCONST, tLET) {
-				decl := getVarDeclaration()
-				decl.isInForStatement = true
-				init = decl
-			} else {
-				init = getSequence()
-			}
-
-			if accept(tIN, tOF) {
-				fio := forInOfStatement{}
-				if vs, ok := init.(varStatement); ok {
-					if len(vs.decls) > 1 {
-						panic("Invalid left-hand expression \"" + vs.String() + "\"")
-					}
-				}
-				fio.value = init
-				fio.keyword = getLexeme()
-				fio.iterable = getSpread()
-				expect(tPAREN_RIGHT)
-				fio.body = getStatement()
-				result = fio
-			} else {
-				fs := forStatement{}
-				fs.init = init
-				expect(tSEMI)
-				fs.test = getSequence()
-				expect(tSEMI)
-				if !accept(tPAREN_RIGHT) {
-					fs.final = getSequence()
-					expect(tPAREN_RIGHT)
-				} else {
-					fs.final = atom{}
-				}
-				fs.body = getStatement()
-				result = fs
-			}
-
-		case accept(tSEMI):
-			result = expressionStatement{nil}
-
-		case accept(tEXPORT):
-			es := exportStatement{}
-			es.exportedVars = make([]exportedVar, 0)
-
-			if accept(tFUNCTION) {
-				es.isDeclaration = true
-				expVar := exportedVar{}
-				name := atom{token{tType: tNAME, lexeme: ""}}
-				if accept(tNAME) {
-					name = atom{getToken()}
-				}
-				decl := getFunctionExpression()
-				decl.name = name
-				expVar.value = decl
-				expVar.name = name
-				es.exportedVars = append(es.exportedVars, expVar)
-			} else if t.tType == tVAR || t.tType == tCONST || t.tType == tLET {
-				es.isDeclaration = true
-				decl := getStatement()
-				varSt := decl.(varStatement)
-				for _, declarator := range varSt.decls {
-					expVar := exportedVar{}
-					expVar.name = declarator.name.(atom)
-					expVar.pseudonym = atom{token{tType: tNAME, lexeme: ""}}
-					expVar.value = declarator.value
-					es.exportedVars = append(es.exportedVars, expVar)
-				}
-			} else if accept(tDEFAULT) {
-				expVar := exportedVar{}
-				expVar.name = atom{token{tType: tNAME, lexeme: "default"}}
-				if accept(tFUNCTION) {
-					es.isDeclaration = true
-					name := atom{token{tType: tNAME, lexeme: ""}}
-					if accept(tNAME) {
-						name = atom{getToken()}
-					}
-					decl := getFunctionExpression()
-					decl.name = name
-					expVar.value = decl
-				} else if accept(tCLASS) {
-
-				} else {
-					expVar.pseudonym = atom{token{tType: tNAME, lexeme: ""}}
-					expVar.value = getSpread()
-				}
-				es.exportedVars = append(es.exportedVars, expVar)
-				expect(tSEMI)
-			}
-			result = es
-
-		case accept(tWHILE):
-			wlSt := whileStatement{}
-			expect(tPAREN_LEFT)
-			wlSt.test = getSequence()
-			expect(tPAREN_RIGHT)
-			wlSt.body = getStatement()
-			result = wlSt
-
-		case accept(tCURLY_LEFT):
-			blSt := blockStatement{}
-			blSt.statements = make([]ast, 0)
-			for !accept(tCURLY_RIGHT) {
-				blSt.statements = append(blSt.statements, getStatement())
-			}
-			result = blSt
-
-		case accept(tIF):
-			ifSt := ifStatement{}
-			expect(tPAREN_LEFT)
-			ifSt.test = getSequence()
-			expect(tPAREN_RIGHT)
-			ifSt.consequent = getStatement()
-			if accept(tELSE) {
-				ifSt.alternate = getStatement()
-			}
-			result = ifSt
-
-		// tVAR tNAME [tEQUALS add] {tCOMMA tNAME [tEQUALS add]} tSEMI
-		case accept(tVAR) || accept(tCONST) || accept(tLET):
-			result = getVarDeclaration()
-			expect(tSEMI)
-
-		// // tIMPORT [tNAME tFROM] [tCURLY_LEFT [tDEFAULT tAS tNAME] [tNAME {tCOMMA tNAME}] [tCOMMA] tCURLY_RIGHT tFROM] tSTRING;
-		case accept(tIMPORT):
-			impSt := importStatement{}
-			impSt.vars = make([]importedVar, 0)
-			// import { foo, bar as i } from "module-name";
-			if accept(tNAME) {
-				defVar := importedVar{}
-				defVar.pseudonym = atom{getToken()}
-				defVar.name = atom{token{lexeme: "default", tType: tNAME}}
-
-				impSt.vars = append(impSt.vars, defVar)
-				if src[i+1].tType == tCURLY_LEFT {
-					expect(tCOMMA)
-				} else {
-					expect(tFROM)
-				}
-			}
-			if accept(tCURLY_LEFT) {
-				for accept(tNAME) || accept(tDEFAULT) {
-					extVar := importedVar{}
-					extVar.name = atom{getToken()}
-					if accept(tAS) {
-						expect(tNAME)
-						extVar.pseudonym = atom{getToken()}
-					} else {
-						extVar.pseudonym = atom{getToken()}
-					}
-					impSt.vars = append(impSt.vars, extVar)
-					if src[i+2].tType == tNAME || src[i+2].tType == tDEFAULT {
-						expect(tCOMMA)
-					} else {
-						accept(tCOMMA)
-					}
-				}
-
-				expect(tCURLY_RIGHT)
-				expect(tFROM)
-			}
-			expect(tSTRING)
-			impSt.path = getLexeme()
-			result = impSt
-			expect(tSEMI)
-
-		case accept(tFUNCTION):
-			expect(tNAME)
-			name := atom{getToken()}
-			funcDecl := getFunctionExpression()
-			funcDecl.name = name
-			result = funcDecl
-
-		case accept(tRETURN):
-			rs := returnStatement{}
-			if !accept(tSEMI) {
-				rs.value = getSequence()
-				expect(tSEMI)
-			}
-			result = rs
-
-		case accept(tCONTINUE):
-			result = expressionStatement{atom{getToken()}}
-			expect(tSEMI)
-
-		default:
-			result = expressionStatement{getSequence()}
-			expect(tSEMI)
-		}
-		return result
-	}
-
-	getProgram := func() program {
-		result := program{}
-		result.statements = make([]ast, 0)
-
-		for !accept(tEND_OF_INPUT) {
-			result.statements = append(result.statements, getStatement())
-		}
-
-		return result
-	}
+func parse(localSrc []token) program {
+	sourceTokens = localSrc
+	index = 0
+	tok = sourceTokens[index]
 
 	return getProgram()
 }

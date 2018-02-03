@@ -252,40 +252,43 @@ func transformIntoModule(programAst program, fileName string) (program, []string
 		case exportStatement:
 			for _, expVar := range st.exportedVars {
 				prop := objectProperty{}
-				prop.key = expVar.name
-				if st.isDeclaration {
-					bs.statements = append(bs.statements, expVar.value)
-				} else {
-					prop.value = expVar.value
-				}
+				prop.key.value = expVar.name
+				// if st.isDeclaration {
+				// 	bs.statements = append(bs.statements, expVar.name)
+				// } else {
+				// 	prop.value = expVar.name
+				// }
 				returnExport.properties = append(returnExport.properties, prop)
 			}
 
 		case importStatement:
-			resolvedPath := resolveES6ImportPath(st.path, fileName)
+			resolvedPath := resolveES6ImportPath(st.path.val.lexeme, fileName)
 			exportObjName := CreateVarNameFromPath(resolvedPath)
 
 			fileImports = append(fileImports, resolvedPath)
 			ext := GetFileExtension(resolvedPath)
 
 			if len(st.vars) > 0 {
-				vs := varStatement{}
-				vs.keyword = "var"
-				vs.decls = []declaration{}
+				vd := varDeclaration{}
+				vd.keyword = atom{makeToken("var")}
+				vd.declarations = []declarator{}
+
 				for _, impVar := range st.vars {
-					decl := declaration{}
-					decl.name = impVar.pseudonym
+					decl := declarator{}
+					decl.left = impVar.alias
+
 					if ext == "js" {
-						decl.value = memberExpression{
-							object:   atom{makeToken(exportObjName)},
-							property: impVar.name,
-						}
+						me := memberExpression{}
+						me.object = atom{makeToken(exportObjName)}
+						me.property.value = impVar.name
+
+						decl.value = me
 					} else {
 						decl.value = atom{makeToken("\"" + exportObjName + "." + ext + "\"")}
 					}
-					vs.decls = append(vs.decls, decl)
+					vd.declarations = append(vd.declarations, decl)
 				}
-				bs.statements = append(bs.statements, vs)
+				bs.statements = append(bs.statements, vd)
 			}
 
 		default:
@@ -304,13 +307,13 @@ func transformIntoModule(programAst program, fileName string) (program, []string
 	fc := functionCall{}
 	fc.name = fe
 
-	decl := declaration{}
-	decl.name = atom{makeToken(expObj)}
+	decl := declarator{}
+	decl.left = atom{makeToken(expObj)}
 	decl.value = fc
 
-	vs := varStatement{}
-	vs.decls = []declaration{decl}
-	vs.keyword = "var"
+	vs := varDeclaration{}
+	vs.declarations = []declarator{decl}
+	vs.keyword = atom{makeToken("var")}
 
 	result.statements = append(result.statements, vs)
 
