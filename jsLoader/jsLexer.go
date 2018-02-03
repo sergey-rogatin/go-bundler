@@ -49,7 +49,7 @@ func lex(src []byte) []token {
 	i := 0
 	c := src[i]
 
-	line := 0
+	line := 1
 	column := 0
 
 	isWhitespace := func(c byte) bool {
@@ -251,14 +251,13 @@ func transformIntoModule(programAst program, fileName string) (program, []string
 		switch st := item.(type) {
 
 		case exportStatement:
-			for _, expVar := range st.exportedVars {
+			for _, v := range st.vars {
 				prop := objectProperty{}
-				prop.key.value = expVar.name
-				// if st.isDeclaration {
-				// 	bs.statements = append(bs.statements, expVar.name)
-				// } else {
-				// 	prop.value = expVar.name
-				// }
+
+				if v.name != nil {
+					prop.value = v.name
+				}
+				prop.key.value = v.alias
 				returnExport.properties = append(returnExport.properties, prop)
 			}
 
@@ -312,11 +311,13 @@ func transformIntoModule(programAst program, fileName string) (program, []string
 	decl.left = atom{makeToken(expObj)}
 	decl.value = fc
 
-	vs := varDeclaration{}
-	vs.declarations = []declarator{decl}
-	vs.keyword = atom{makeToken("var")}
+	vd := varDeclaration{}
+	vd.declarations = []declarator{decl}
+	vd.keyword = atom{makeToken("var")}
 
-	result.statements = append(result.statements, vs)
+	es := expressionStatement{}
+	es.expr = vd
+	result.statements = append(result.statements, es)
 
 	return result, fileImports
 }

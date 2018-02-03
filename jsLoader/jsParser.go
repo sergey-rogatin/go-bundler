@@ -153,13 +153,12 @@ func getStatement() ast {
 		st = s
 	} else if s, ok := getSwitchStatement(); ok {
 		st = s
+	} else if s, ok := getExportStatement(); ok {
+		st = s
 	} else {
 		st = getExpressionStatement()
 	}
 
-	// else if s, ok := getExportStatement(); ok {
-	// 	st = s
-	// }
 	return st
 }
 
@@ -236,10 +235,10 @@ type exportedVar struct {
 }
 
 type exportStatement struct {
-	exportedVars []exportedVar
-	declaration  ast
-	source       atom
-	exportAll    bool
+	vars        []exportedVar
+	declaration ast
+	source      atom
+	exportAll   bool
 }
 
 func (es exportStatement) String() string {
@@ -247,24 +246,24 @@ func (es exportStatement) String() string {
 
 	if es.exportAll {
 		result += "*"
-	} else if len(es.exportedVars) == 1 && es.exportedVars[0].alias.val.lexeme == "default" {
+	} else if len(es.vars) == 1 && es.vars[0].alias.val.lexeme == "default" {
 		result += "default "
 		if es.declaration != nil {
 			result += es.declaration.String()
 		} else {
-			result += es.exportedVars[0].name.String()
+			result += es.vars[0].name.String()
 		}
 	} else {
 		if es.declaration != nil {
 			result += es.declaration.String()
 		} else {
 			result += "{"
-			for i, ev := range es.exportedVars {
+			for i, ev := range es.vars {
 				result += ev.name.String()
 				if ev.alias.val.lexeme != "" {
 					result += " as " + ev.alias.val.lexeme
 				}
-				if i < len(es.exportedVars)-1 {
+				if i < len(es.vars)-1 {
 					result += ","
 				}
 			}
@@ -284,7 +283,7 @@ func getExportStatement() (exportStatement, bool) {
 	if !accept(tEXPORT) {
 		return es, false
 	}
-	es.exportedVars = []exportedVar{}
+	es.vars = []exportedVar{}
 
 	if accept(tDEFAULT) {
 		ev := exportedVar{}
@@ -302,7 +301,7 @@ func getExportStatement() (exportStatement, bool) {
 		}
 
 		expect(tSEMI)
-		es.exportedVars = append(es.exportedVars, ev)
+		es.vars = append(es.vars, ev)
 
 	} else if accept(tCURLY_LEFT) {
 		for !accept(tCURLY_RIGHT) {
@@ -313,7 +312,7 @@ func getExportStatement() (exportStatement, bool) {
 					next()
 					ev.alias = atom{getToken()}
 				}
-				es.exportedVars = append(es.exportedVars, ev)
+				es.vars = append(es.vars, ev)
 			}
 
 			if !accept(tCOMMA) {
@@ -334,14 +333,14 @@ func getExportStatement() (exportStatement, bool) {
 		for _, d := range vd.declarations {
 			ev := exportedVar{}
 			ev.name = d.left
-			es.exportedVars = append(es.exportedVars, ev)
+			es.vars = append(es.vars, ev)
 		}
 
 	} else if fs, ok := getFunctionStatement(); ok {
 		es.declaration = fs
 		ev := exportedVar{}
 		ev.name = fs.funcExpr.name
-		es.exportedVars = append(es.exportedVars, ev)
+		es.vars = append(es.vars, ev)
 
 	} else if accept(tMULT) {
 		expect(tFROM)
@@ -494,8 +493,10 @@ func getReturnStatement() (returnStatement, bool) {
 	if !accept(tRETURN) {
 		return rs, false
 	}
-
-	rs.value = getYield()
+	if !accept(tSEMI) {
+		rs.value = getYield()
+		expect(tSEMI)
+	}
 	return rs, true
 }
 
@@ -708,6 +709,8 @@ func (op objectPattern) String() string {
 }
 
 func getObjectPattern() (objectPattern, bool) {
+	startPos := index
+
 	op := objectPattern{}
 	if !accept(tCURLY_LEFT) {
 		return op, false
@@ -725,7 +728,10 @@ func getObjectPattern() (objectPattern, bool) {
 		op.properties = append(op.properties, prop)
 
 		if !accept(tCOMMA) {
-			expect(tCURLY_RIGHT)
+			if !accept(tCURLY_RIGHT) {
+				backtrack(startPos)
+				return op, false
+			}
 			break
 		}
 	}
