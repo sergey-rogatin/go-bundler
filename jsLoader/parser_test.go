@@ -32,7 +32,7 @@ func TestLambda(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le, ok := getLambda()
+		le, ok := parseLambda()
 		if !ok {
 			t.Errorf("Lambda not parsed")
 		}
@@ -60,7 +60,7 @@ func TestLambdaFalse(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		_, ok := getLambda()
+		_, ok := parseLambda()
 		if ok {
 			t.Errorf("Lambda parsed incorrectly")
 		}
@@ -84,7 +84,7 @@ func TestMemberExpression(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol := getStatement()
+		ol := parseStatement()
 		ok := true
 		if !ok {
 			t.Errorf("Member expression not parsed")
@@ -129,7 +129,7 @@ func TestObjectLiteral(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol, ok := getObjectLiteral()
+		ol, ok := parseObjectLiteral()
 		if !ok {
 			t.Errorf("Object literal not parsed")
 		} else {
@@ -157,7 +157,7 @@ func TestFunctionExpression(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol, ok := getFunctionExpression(false)
+		ol, ok := parseFunctionExpression(false)
 		if !ok {
 			t.Errorf("Function expression not parsed")
 		} else {
@@ -181,7 +181,7 @@ func TestArrayLiteral(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol, ok := getArrayLiteral()
+		ol, ok := parseArrayLiteral()
 		if !ok {
 			t.Errorf("Array literal not parsed")
 		} else {
@@ -205,7 +205,7 @@ func TestBlockStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol, ok := getBlockStatement()
+		ol, ok := parseBlockStatement()
 		if !ok {
 			t.Errorf("Block statement not parsed")
 		} else {
@@ -261,7 +261,7 @@ func TestForStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol, ok := getForStatement()
+		ol, ok := parseForStatement()
 		if !ok {
 			t.Errorf("For statement not parsed")
 		} else {
@@ -293,7 +293,7 @@ func TestWhileStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol, ok := getWhileStatement()
+		ol, ok := parseWhileStatement()
 		if !ok {
 			t.Errorf("While statement not parsed")
 		} else {
@@ -325,7 +325,7 @@ func TestDoWhileStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol, ok := getDoWhileStatement()
+		ol, ok := parseDoWhileStatement()
 		if !ok {
 			t.Errorf("Do-while statement not parsed")
 		} else {
@@ -357,7 +357,7 @@ func TestIfStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol, ok := getIfStatement()
+		ol, ok := parseIfStatement()
 		if !ok {
 			t.Errorf("If statement not parsed")
 		} else {
@@ -381,7 +381,7 @@ func TestFunctionStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol, ok := getFunctionStatement()
+		ol, ok := parseFunctionStatement()
 		if !ok {
 			t.Errorf("Function statement not parsed")
 		} else {
@@ -421,7 +421,7 @@ func TestImportStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol, ok := getImportStatement()
+		ol, ok := parseImportStatement()
 		if !ok {
 			t.Errorf("Import statement not parsed")
 		} else {
@@ -457,7 +457,7 @@ func TestExpressionStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol := getExpressionStatement()
+		ol := parseExpressionStatement()
 
 		if c.res != ol.String() {
 			t.Errorf("Expected %s, got %s", c.res, ol)
@@ -514,7 +514,7 @@ func TestExportStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol, ok := getExportStatement()
+		ol, ok := parseExportStatement()
 		if !ok {
 			t.Errorf("Export statement not parsed")
 		} else {
@@ -554,7 +554,7 @@ func TestObjectDestructuring(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol := getStatement()
+		ol := parseStatement()
 		ok := true
 		if !ok {
 			t.Errorf("Destucturing statement not parsed")
@@ -583,7 +583,7 @@ func TestSwitchStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol, ok := getSwitchStatement()
+		ol, ok := parseSwitchStatement()
 		if !ok {
 			t.Errorf("Switch statement not parsed")
 		} else {
@@ -632,7 +632,7 @@ func TestNewlineAndSemi(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol, _ := parse(sourceTokens)
+		ol, _ := parseTokens(sourceTokens)
 		ok := true
 		if !ok {
 			t.Errorf("Program not parsed")

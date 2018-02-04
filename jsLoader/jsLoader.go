@@ -17,7 +17,7 @@ func (le LoaderError) Error() string {
 
 func LoadFile(src []byte, filePath string) ([]byte, []string, error) {
 	tokens := lex(src)
-	initialProgram, parseErr := parse(tokens)
+	initialProgram, parseErr := parseTokens(tokens)
 	if parseErr != nil {
 		loaderErr := LoaderError{}
 		loaderErr.err = parseErr
