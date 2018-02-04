@@ -297,8 +297,10 @@ type propertyName struct {
 }
 
 type objectProperty struct {
-	key   propertyName
-	value ast
+	key      propertyName
+	value    ast
+	isGetter bool
+	isSetter bool
 }
 
 type objectLiteral struct {
@@ -1109,14 +1111,30 @@ func parseObjectLiteral() (objectLiteral, bool) {
 
 	for !accept(tCURLY_RIGHT) {
 		prop := objectProperty{}
+		if tok.lexeme == "get" {
+			next()
+			prop.isGetter = true
+		} else if tok.lexeme == "set" {
+			next()
+			prop.isSetter = true
+		}
+
 		prop.key = parsePropertyName()
 
-		if accept(tCOLON) {
-			prop.value = parseYield()
-		} else if fe, ok := parseFunctionExpression(true); ok {
-			prop.value = fe
-		} else if prop.key.isCalculated || prop.key.isNotName {
-			checkASI(tSEMI)
+		if prop.isGetter || prop.isSetter {
+			if fe, ok := parseFunctionExpression(true); ok {
+				prop.value = fe
+			} else {
+				checkASI(tSEMI)
+			}
+		} else {
+			if accept(tCOLON) {
+				prop.value = parseYield()
+			} else if fe, ok := parseFunctionExpression(true); ok {
+				prop.value = fe
+			} else if prop.key.isCalculated || prop.key.isNotName {
+				checkASI(tSEMI)
+			}
 		}
 
 		ol.properties = append(ol.properties, prop)
@@ -1547,6 +1565,12 @@ func (pe parenExpression) String() string {
 func (ol objectLiteral) String() string {
 	result := "{"
 	for i, prop := range ol.properties {
+		if prop.isGetter {
+			result += "get "
+		} else if prop.isSetter {
+			result += "set "
+		}
+
 		result += prop.key.String()
 
 		fe, valueIsFunction := prop.value.(functionExpression)

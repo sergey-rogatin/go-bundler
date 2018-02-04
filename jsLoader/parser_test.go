@@ -125,6 +125,10 @@ func TestObjectLiteral(t *testing.T) {
 			"{['foo' + 32]() {}}",
 			"{['foo'+32](){}}",
 		},
+		{
+			"{set foo() {}, get foo() {}}",
+			"{set foo(){},get foo(){}}",
+		},
 	}
 
 	for _, c := range cases {
