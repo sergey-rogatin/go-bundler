@@ -211,13 +211,14 @@ func addFileToBundle(
 	}
 	lastModTime = fileStats.ModTime()
 
-	switch ext {
-	case ".js":
-		cachedFile, ok := cache.read(resolvedPath)
-		if ok && cachedFile.lastModTime == fileStats.ModTime() {
-			data = cachedFile.data
-			fileImports = cachedFile.imports
-		} else {
+	cachedFile, ok := cache.read(resolvedPath)
+	if ok && cachedFile.lastModTime == fileStats.ModTime() {
+		data = cachedFile.data
+		fileImports = cachedFile.imports
+	} else {
+		switch ext {
+		case ".js":
+
 			src, err := ioutil.ReadFile(resolvedPath)
 			if err != nil {
 				errorCh <- err
@@ -229,12 +230,12 @@ func addFileToBundle(
 				errorCh <- err
 				return
 			}
-		}
 
-	default:
-		bundleDir := filepath.Dir(bundleSf.file.Name())
-		dstFileName := bundleDir + "/" + jsLoader.CreateVarNameFromPath(resolvedPath) + ext
-		copyFile(dstFileName, resolvedPath)
+		default:
+			bundleDir := filepath.Dir(bundleSf.file.Name())
+			dstFileName := bundleDir + "/" + jsLoader.CreateVarNameFromPath(resolvedPath) + ext
+			copyFile(dstFileName, resolvedPath)
+		}
 	}
 
 	err = addFilesToBundle(fileImports, bundleSf, cache)
@@ -277,7 +278,11 @@ func copyFile(dst, src string) {
 	io.Copy(to, from)
 }
 
-func watchBundledFiles(cache *bundleCache, entryName, bundleName string) func() {
+func watchBundledFiles(
+	cache *bundleCache,
+	entryName,
+	bundleName string,
+) func() {
 	fmt.Println("Watching for file changes")
 
 	running := true
@@ -285,11 +290,15 @@ func watchBundledFiles(cache *bundleCache, entryName, bundleName string) func() 
 	checkFiles := func() {
 		for running {
 			for path, file := range cache.files {
+				if !file.isReachable {
+					continue
+				}
+
 				stats, err := os.Stat(path)
 				if err != nil {
 					continue
 				}
-				if file.isReachable && file.lastModTime != stats.ModTime() {
+				if file.lastModTime != stats.ModTime() {
 					createBundle(entryName, bundleName, cache)
 					break
 				}

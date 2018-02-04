@@ -18,7 +18,6 @@ const (
 	p_UNEXPECTED_TOKEN = iota
 	p_WRONG_ASSIGNMENT
 	p_UNNAMED_FUNCTION
-	p_TOO_MANY_RESTS
 )
 
 type parsingError struct {
@@ -46,11 +45,6 @@ func (pe parsingError) Error() string {
 			pe.tok.line, pe.tok.column,
 		)
 
-	case p_TOO_MANY_RESTS:
-		return fmt.Sprintf(
-			"There can only be one rest statement in function arguments at %v:%v",
-			pe.tok.line, pe.tok.column,
-		)
 	default:
 		return "Unknown parser error"
 	}
