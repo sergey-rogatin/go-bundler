@@ -643,3 +643,39 @@ func TestNewlineAndSemi(t *testing.T) {
 		}
 	}
 }
+
+func TestArrayPattern(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			"[foo,bar,]",
+			"[foo,bar,]",
+		},
+		{
+			"[foo,,]",
+			"[foo,,]",
+		},
+		{
+			"[a = 23, foo]",
+			"[a=23,foo]",
+		},
+		{
+			"[{foo:bar = 23} = 23, foo]",
+			"[{foo:bar=23}=23,foo]",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		ol, ok := parseArrayPattern()
+		if !ok {
+			t.Errorf("Array pattern not parsed")
+		} else {
+			if c.res != ol.String() {
+				t.Errorf("Expected %s, got %s", c.res, ol)
+			}
+		}
+	}
+}

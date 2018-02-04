@@ -227,6 +227,10 @@ type objectPattern struct {
 	properties []objectProperty
 }
 
+type arrayPattern struct {
+	properties []declarator
+}
+
 type declarator struct {
 	left  ast
 	value ast
@@ -748,6 +752,23 @@ func parseObjectPattern() (objectPattern, bool) {
 	}
 
 	return op, true
+}
+
+func parseArrayPattern() (arrayPattern, bool) {
+	ap := arrayPattern{}
+
+	if !accept(tBRACKET_LEFT) {
+		return ap, false
+	}
+
+	ap.properties = []declarator{}
+	for ok := true; ok; ok = accept(tCOMMA) {
+		d, _ := parseDeclarator()
+		ap.properties = append(ap.properties, d)
+	}
+	expect(tBRACKET_RIGHT)
+
+	return ap, true
 }
 
 func parseDeclarator() (declarator, bool) {
@@ -1386,7 +1407,10 @@ func (op objectPattern) String() string {
 }
 
 func (d declarator) String() string {
-	result := d.left.String()
+	result := ""
+	if d.left != nil {
+		result += d.left.String()
+	}
 	if d.value != nil {
 		result += "=" + d.value.String()
 	}
@@ -1600,5 +1624,17 @@ func (fs forInStatement) String() string {
 	result := "for(" + fs.left.String()
 	result += " in " + fs.right.String() + ")"
 	result += fs.body.String()
+	return result
+}
+
+func (ap arrayPattern) String() string {
+	result := "["
+	for i, prop := range ap.properties {
+		result += prop.String()
+		if i < len(ap.properties)-1 {
+			result += ","
+		}
+	}
+	result += "]"
 	return result
 }

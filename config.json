@@ -4,7 +4,7 @@
   "templateHTML": "test/template.html",
   "watchFiles": true,
   "devServer": {
-    "enable": false,
+    "enable": true,
     "port": 8080
   }
 }
