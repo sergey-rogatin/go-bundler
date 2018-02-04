@@ -45,6 +45,7 @@ type fileCache struct {
 	data        []byte
 	lastModTime time.Time
 	imports     []string
+	isReachable bool
 }
 
 type bundleCache struct {
@@ -138,31 +139,46 @@ func createBundle(entryFileName, bundleFileName string, cache *bundleCache) {
 	sf := newSafeFile(bundleFileName)
 	defer sf.close()
 
-	addFilesToBundle([]string{entryFileName}, sf, cache)
+	// mark all files as unreachable at the start of the build
+	// so the autorebuilder does not try to rebuild when they change
+	for fileName, file := range cache.files {
+		file.isReachable = false
+		cache.files[fileName] = file
+	}
 
-	fmt.Printf("Build finished in %s\n", time.Since(buildStartTime))
+	err := addFilesToBundle([]string{entryFileName}, sf, cache)
+	if err == nil {
+		fmt.Printf("Build finished in %s\n", time.Since(buildStartTime))
+	} else {
+		fmt.Println(err)
+	}
 }
 
 func addFilesToBundle(
 	files []string,
 	bundleSf *safeFile,
 	cache *bundleCache,
-) {
-	filesImportedCh := make(chan string, len(files))
+) error {
+	errorCh := make(chan error, len(files))
 
 	for _, unbundledFile := range files {
-		go addFileToBundle(unbundledFile, bundleSf, filesImportedCh, cache)
+		go addFileToBundle(unbundledFile, bundleSf, errorCh, cache)
 	}
 
 	for counter := 0; counter < len(files); counter++ {
-		<-filesImportedCh
+		err := <-errorCh
+		if err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
 func addFileToBundle(
 	resolvedPath string,
 	bundleSf *safeFile,
-	finishedImportsCh chan string,
+	errorCh chan error,
 	cache *bundleCache,
 ) {
 	ext := filepath.Ext(resolvedPath)
@@ -183,7 +199,10 @@ func addFileToBundle(
 				panic(err)
 			}
 
-			data, fileImports = jsLoader.LoadFile(src, resolvedPath)
+			data, fileImports, err = jsLoader.LoadFile(src, resolvedPath)
+			if err != nil {
+				errorCh <- err
+			}
 		}
 
 	default:
@@ -196,11 +215,12 @@ func addFileToBundle(
 		data:        data,
 		lastModTime: fileStats.ModTime(),
 		imports:     fileImports,
+		isReachable: true,
 	})
 
-	addFilesToBundle(fileImports, bundleSf, cache)
+	err := addFilesToBundle(fileImports, bundleSf, cache)
 	bundleSf.write(data)
-	finishedImportsCh <- resolvedPath
+	errorCh <- err
 }
 
 func bundleHTMLTemplate(templateName, bundleName string) {

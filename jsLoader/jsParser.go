@@ -80,7 +80,7 @@ func backtrack(backIndex int) {
 	tok = sourceTokens[index]
 }
 
-func testType(tTypes ...tokenType) bool {
+func test(tTypes ...tokenType) bool {
 	i := index
 	for sourceTokens[i].tType == tNEWLINE {
 		i++
@@ -118,8 +118,7 @@ func checkASI(tType tokenType) {
 			return
 		}
 	}
-
-	panic("Unexpected token " + tok.String())
+	panic(parsingError{p_UNEXPECTED_TOKEN, tok})
 }
 
 func expect(tType tokenType) {
@@ -137,6 +136,33 @@ func getToken() token {
 	return sourceTokens[index-1]
 }
 
+const (
+	p_UNEXPECTED_TOKEN = iota
+	p_WRONG_ASSIGNMENT
+	p_UNNAMED_FUNCTION
+)
+
+type parsingError struct {
+	kind int
+	tok  token
+}
+
+func (pe parsingError) Error() string {
+	switch pe.kind {
+	case p_UNEXPECTED_TOKEN:
+		return fmt.Sprintf("Unexpected token \"%s\" at %v:%v", pe.tok.lexeme, pe.tok.line, pe.tok.column)
+
+	case p_UNNAMED_FUNCTION:
+		return fmt.Sprintf("Unnamed function declaration at %v:%v", pe.tok.line, pe.tok.column)
+
+	case p_WRONG_ASSIGNMENT:
+		return fmt.Sprintf("Invalid left-hand side in assignment at %v:%v", pe.tok.line, pe.tok.column)
+
+	default:
+		return "Unknown parser error"
+	}
+}
+
 //
 //
 // parsing types
@@ -152,14 +178,23 @@ func (ps program) String() string {
 	return result
 }
 
-func getProgram() program {
-	p := program{}
+func getProgram() (p program, err error) {
+	p = program{}
 	p.statements = []ast{}
+	err = nil
+
+	defer func() {
+		if r := recover(); r != nil {
+			if pe, ok := r.(parsingError); ok {
+				err = pe
+			}
+		}
+	}()
 
 	for !accept(tEND_OF_INPUT) {
 		p.statements = append(p.statements, getStatement())
 	}
-	return p
+	return
 }
 
 func getStatement() ast {
@@ -243,7 +278,7 @@ func getSwitchStatement() (switchStatement, bool) {
 			c.statements = []ast{}
 
 			expect(tCOLON)
-			for !testType(tCASE, tDEFAULT, tCURLY_RIGHT) {
+			for !test(tCASE, tDEFAULT, tCURLY_RIGHT) {
 				c.statements = append(c.statements, getStatement())
 			}
 			sw.cases = append(sw.cases, c)
@@ -251,7 +286,7 @@ func getSwitchStatement() (switchStatement, bool) {
 			if accept(tDEFAULT) {
 				expect(tCOLON)
 				sw.defCase = []ast{}
-				for !testType(tCASE, tCURLY_RIGHT) {
+				for !test(tCASE, tCURLY_RIGHT) {
 					sw.defCase = append(sw.defCase, getStatement())
 				}
 			}
@@ -546,7 +581,7 @@ func getFunctionStatement() (functionStatement, bool) {
 
 	if fe, ok := getFunctionExpression(false); ok {
 		if fe.name.val.lexeme == "" {
-			panic("Function declaration must be named! " + getToken().String())
+			panic(parsingError{p_UNNAMED_FUNCTION, tok})
 		} else {
 			fs.funcExpr = fe
 			return fs, true
@@ -699,7 +734,7 @@ func getForStatement() (ast, bool) {
 	var init ast
 	if vd, ok := getVarDeclaration(); ok {
 		init = vd
-	} else if testType(tSEMI) {
+	} else if test(tSEMI) {
 		init = atom{token{lexeme: ""}}
 	} else {
 		init = getSequence()
@@ -1126,7 +1161,7 @@ func getFunctionCallOrMember(noFuncCall bool) ast {
 				}
 			}
 			funcName = fc
-		} else if accept(tDOT) || testType(tBRACKET_LEFT) {
+		} else if accept(tDOT) || test(tBRACKET_LEFT) {
 			me := memberExpression{}
 			me.object = funcName
 			me.property = getPropertyName()
@@ -1387,7 +1422,7 @@ func (fe functionExpression) String() string {
 func getFunctionExpression(isMember bool) (functionExpression, bool) {
 	fe := functionExpression{}
 	if isMember {
-		if !testType(tPAREN_LEFT) {
+		if !test(tPAREN_LEFT) {
 			return fe, false
 		}
 
@@ -1492,7 +1527,7 @@ func getPropertyName() propertyName {
 		expect(tBRACKET_RIGHT)
 	} else if accept(tNAME) {
 		name.value = atom{getToken()}
-	} else if isValidPropertyName(tok.lexeme) || testType(tNUMBER, tSTRING) {
+	} else if isValidPropertyName(tok.lexeme) || test(tNUMBER, tSTRING) {
 		name.isNotName = true
 		next()
 		name.value = atom{getToken()}
@@ -1515,11 +1550,13 @@ func (fs forOfStatement) String() string {
 
 func getForOfStatement(left ast) forOfStatement {
 	fs := forOfStatement{}
+
 	if vs, ok := left.(varDeclaration); ok {
 		if len(vs.declarations) > 1 {
-			panic("Wrong left side in for-of statement")
+			panic(parsingError{p_WRONG_ASSIGNMENT, tok})
 		}
 	}
+
 	fs.left = left
 	fs.right = getYield()
 	expect(tPAREN_RIGHT)
@@ -1545,9 +1582,10 @@ func getForInStatement(left ast) forInStatement {
 	fs := forInStatement{}
 	if vs, ok := left.(varDeclaration); ok {
 		if len(vs.declarations) > 1 {
-			panic("Wrong left side in for-in statement")
+			panic(parsingError{p_WRONG_ASSIGNMENT, tok})
 		}
 	}
+
 	fs.left = left
 	fs.right = getYield()
 	expect(tPAREN_RIGHT)
@@ -1556,7 +1594,7 @@ func getForInStatement(left ast) forInStatement {
 	return fs
 }
 
-func parse(localSrc []token) program {
+func parse(localSrc []token) (program, error) {
 	sourceTokens = localSrc
 	index = 0
 	tok = sourceTokens[index]

@@ -2,8 +2,6 @@ package jsLoader
 
 import (
 	"fmt"
-	"path/filepath"
-	"strings"
 )
 
 type token struct {
@@ -64,9 +62,10 @@ func lex(src []byte) []token {
 		lastToken.tType = tType
 		lastToken.lexeme = lastToken.lexeme + string(c)
 		lastToken.line = line
-		lastToken.column = column
-		// fmt.Println(lastToken)
+		lastToken.column = column - len(lastToken.lexeme)
+
 		i++
+		column++
 
 		if i < len(src) {
 			c = src[i]
@@ -93,6 +92,7 @@ func lex(src []byte) []token {
 
 	skip := func() {
 		i++
+		column++
 		if i < len(src) {
 			c = src[i]
 		}
@@ -172,170 +172,10 @@ func lex(src []byte) []token {
 				skip()
 			}
 		}
-		column++
 	}
 
 	eat(tEND_OF_INPUT)
 	end()
 
 	return tokens
-}
-
-func makeToken(text string) token {
-	res := lex([]byte(text))
-	return res[0]
-}
-
-type importFileInfo struct {
-	exportObjName string
-	resolvedPath  string
-	def           string
-	vars          []string
-}
-
-type exportInfo struct {
-	def  []token
-	vars []token
-}
-
-// func GetFileExtension(path string) string {
-// 	parts := strings.Split(path, ".")
-// 	if len(parts) > 1 {
-// 		return parts[len(parts)-1]
-// 	}
-// 	return "js"
-// }
-
-func resolveES6ImportPath(importPath, currentFileName string) string {
-	importPath = trimQuotesFromString(importPath)
-	pathParts := strings.Split(importPath, "/")
-
-	locationParts := strings.Split(currentFileName, "/")
-	locationParts = locationParts[:len(locationParts)-1]
-
-	for _, part := range pathParts {
-		if part == ".." {
-			locationParts = locationParts[:len(locationParts)-1]
-			pathParts = pathParts[1:]
-		}
-		if part == "." {
-			pathParts = pathParts[1:]
-		}
-	}
-
-	fullFileName := strings.Join(append(locationParts, pathParts...), "/")
-
-	ext := ""
-	if strings.Index(pathParts[len(pathParts)-1], ".") < 0 {
-		ext = ".js"
-	}
-
-	result := fullFileName + ext
-	return result
-}
-
-func transformIntoModule(programAst program, fileName string) (program, []string) {
-	result := program{}
-	result.statements = []ast{}
-	fileImports := []string{}
-
-	expObj := CreateVarNameFromPath(fileName)
-
-	bs := blockStatement{}
-	bs.statements = []ast{}
-
-	returnExport := objectLiteral{}
-	returnExport.properties = []objectProperty{}
-
-	for _, item := range programAst.statements {
-		switch st := item.(type) {
-
-		case exportStatement:
-			for _, v := range st.vars {
-				prop := objectProperty{}
-
-				if v.name != nil {
-					prop.value = v.name
-				}
-				prop.key.value = v.alias
-				returnExport.properties = append(returnExport.properties, prop)
-			}
-
-		case importStatement:
-			resolvedPath := resolveES6ImportPath(st.path.val.lexeme, fileName)
-			exportObjName := CreateVarNameFromPath(resolvedPath)
-
-			fileImports = append(fileImports, resolvedPath)
-			ext := filepath.Ext(resolvedPath)
-
-			if len(st.vars) > 0 {
-				vd := varDeclaration{}
-				vd.keyword = atom{makeToken("var")}
-				vd.declarations = []declarator{}
-
-				for _, impVar := range st.vars {
-					decl := declarator{}
-					decl.left = impVar.alias
-
-					if ext == ".js" {
-						me := memberExpression{}
-						me.object = atom{makeToken(exportObjName)}
-						me.property.value = impVar.name
-
-						decl.value = me
-					} else {
-						decl.value = atom{makeToken("\"" + exportObjName + ext + "\"")}
-					}
-					vd.declarations = append(vd.declarations, decl)
-				}
-
-				declStatement := expressionStatement{}
-				declStatement.expr = vd
-				bs.statements = append(bs.statements, declStatement)
-			}
-
-		default:
-			bs.statements = append(bs.statements, st)
-		}
-	}
-
-	rs := returnStatement{}
-	rs.value = returnExport
-
-	bs.statements = append(bs.statements, rs)
-
-	fe := functionExpression{}
-	fe.body = bs
-
-	fc := functionCall{}
-	fc.name = fe
-
-	decl := declarator{}
-	decl.left = atom{makeToken(expObj)}
-	decl.value = fc
-
-	vd := varDeclaration{}
-	vd.declarations = []declarator{decl}
-	vd.keyword = atom{makeToken("var")}
-
-	es := expressionStatement{}
-	es.expr = vd
-	result.statements = append(result.statements, es)
-
-	return result, fileImports
-}
-
-func LoadFile(src []byte, filePath string) ([]byte, []string) {
-	tokens := lex(src)
-	srcAst := parse(tokens)
-	programAst, fileImports := transformIntoModule(srcAst, filePath)
-	resultBytes := []byte(programAst.String())
-
-	return resultBytes, fileImports
-}
-
-func CreateVarNameFromPath(path string) string {
-	newName := strings.Replace(path, "/", "_", -1)
-	newName = strings.Replace(newName, ".", "_", -1)
-	return newName
 }

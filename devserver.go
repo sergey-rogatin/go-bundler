@@ -15,7 +15,7 @@ func watchBundledFiles(cache *bundleCache, entryName, bundleName string) func() 
 		for running {
 			for path, file := range cache.files {
 				stats, _ := os.Stat(path)
-				if file.lastModTime != stats.ModTime() {
+				if file.isReachable && file.lastModTime != stats.ModTime() {
 					createBundle(entryName, bundleName, cache)
 					break
 				}

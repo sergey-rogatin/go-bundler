@@ -632,7 +632,7 @@ func TestNewlineAndSemi(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ol := parse(sourceTokens)
+		ol, _ := parse(sourceTokens)
 		ok := true
 		if !ok {
 			t.Errorf("Program not parsed")
