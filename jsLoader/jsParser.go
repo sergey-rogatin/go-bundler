@@ -18,6 +18,7 @@ const (
 	p_UNEXPECTED_TOKEN = iota
 	p_WRONG_ASSIGNMENT
 	p_UNNAMED_FUNCTION
+	p_TOO_MANY_RESTS
 )
 
 type parsingError struct {
@@ -28,14 +29,28 @@ type parsingError struct {
 func (pe parsingError) Error() string {
 	switch pe.kind {
 	case p_UNEXPECTED_TOKEN:
-		return fmt.Sprintf("Unexpected token \"%s\" at %v:%v", pe.tok.lexeme, pe.tok.line, pe.tok.column)
+		return fmt.Sprintf(
+			"Unexpected token \"%s\" at %v:%v",
+			pe.tok.lexeme, pe.tok.line, pe.tok.column,
+		)
 
 	case p_UNNAMED_FUNCTION:
-		return fmt.Sprintf("Unnamed function declaration at %v:%v", pe.tok.line, pe.tok.column)
+		return fmt.Sprintf(
+			"Unnamed function declaration at %v:%v",
+			pe.tok.line, pe.tok.column,
+		)
 
 	case p_WRONG_ASSIGNMENT:
-		return fmt.Sprintf("Invalid left-hand side in assignment at %v:%v", pe.tok.line, pe.tok.column)
+		return fmt.Sprintf(
+			"Invalid left-hand side in assignment at %v:%v",
+			pe.tok.line, pe.tok.column,
+		)
 
+	case p_TOO_MANY_RESTS:
+		return fmt.Sprintf(
+			"There can only be one rest statement in function arguments at %v:%v",
+			pe.tok.line, pe.tok.column,
+		)
 	default:
 		return "Unknown parser error"
 	}
@@ -265,6 +280,14 @@ type unaryExpression struct {
 	value     ast
 	operator  atom
 	isPostfix bool
+}
+
+type spreadExpression struct {
+	value ast
+}
+
+type restExpression struct {
+	value ast
 }
 
 type functionCall struct {
@@ -736,12 +759,14 @@ func parseObjectPattern() (objectPattern, bool) {
 
 	for !accept(tCURLY_RIGHT) {
 		prop := objectProperty{}
-		prop.key = parsePropertyName()
-
-		if accept(tCOLON) {
-			prop.value = parseAssignment()
+		if accept(tSPREAD) {
+			prop.key.value = restExpression{parseAssignment()}
+		} else {
+			prop.key = parsePropertyName()
+			if accept(tCOLON) {
+				prop.value = parseAssignment()
+			}
 		}
-
 		op.properties = append(op.properties, prop)
 
 		if !accept(tCOMMA) {
@@ -765,7 +790,7 @@ func parseArrayPattern() (arrayPattern, bool) {
 
 	ap.properties = []declarator{}
 	for ok := true; ok; ok = accept(tCOMMA) {
-		d, _ := parseDeclarator()
+		d, _ := parseDeclarator(false)
 		ap.properties = append(ap.properties, d)
 	}
 	expect(tBRACKET_RIGHT)
@@ -773,7 +798,40 @@ func parseArrayPattern() (arrayPattern, bool) {
 	return ap, true
 }
 
-func parseDeclarator() (declarator, bool) {
+func parseDeclarator(isFunctionArg bool) (declarator, bool) {
+	d := declarator{}
+
+	if accept(tSPREAD) {
+		re := restExpression{}
+		if accept(tNAME) {
+			re.value = atom{getToken()}
+		} else if op, ok := parseObjectPattern(); ok {
+			re.value = op
+		} else {
+			return d, false
+		}
+		d.left = re
+		if isFunctionArg {
+			return d, true
+		}
+	} else {
+		if accept(tNAME) {
+			d.left = atom{getToken()}
+		} else if op, ok := parseObjectPattern(); ok {
+			d.left = op
+		} else {
+			return d, false
+		}
+	}
+
+	if accept(tASSIGN) {
+		d.value = parseAssignment()
+	}
+
+	return d, true
+}
+
+func parseDeclaratorNoSpread() (declarator, bool) {
 	d := declarator{}
 
 	if accept(tNAME) {
@@ -800,7 +858,7 @@ func parseVarDeclaration() (varDeclaration, bool) {
 	vd.declarations = []declarator{}
 
 	for ok := true; ok; ok = accept(tCOMMA) {
-		if d, ok := parseDeclarator(); ok {
+		if d, ok := parseDeclaratorNoSpread(); ok {
 			vd.declarations = append(vd.declarations, d)
 		} else {
 			checkASI(tSEMI)
@@ -963,6 +1021,13 @@ func parsePostfixUnary() ast {
 	return value
 }
 
+func parseSpread() ast {
+	if accept(tSPREAD) {
+		return spreadExpression{parseYield()}
+	}
+	return parseYield()
+}
+
 func parseFunctionCallOrMember(noFuncCall bool) ast {
 	funcName := parseConstructorCall()
 
@@ -973,7 +1038,7 @@ func parseFunctionCallOrMember(noFuncCall bool) ast {
 			fc.args = []ast{}
 
 			for !accept(tPAREN_RIGHT) {
-				fc.args = append(fc.args, parseYield())
+				fc.args = append(fc.args, parseSpread())
 				if !accept(tCOMMA) {
 					expect(tPAREN_RIGHT)
 					break
@@ -1072,8 +1137,12 @@ func parseFunctionArgs() ([]declarator, bool) {
 
 	args := []declarator{}
 	for !accept(tPAREN_RIGHT) {
-		if d, ok := parseDeclarator(); ok {
+		if d, ok := parseDeclarator(true); ok {
 			args = append(args, d)
+			if _, ok := d.left.(restExpression); ok {
+				expect(tPAREN_RIGHT)
+				break
+			}
 		} else if !accept(tPAREN_RIGHT) {
 			backtrack(startPos)
 			return nil, false
@@ -1111,6 +1180,7 @@ func parseObjectLiteral() (objectLiteral, bool) {
 
 	for !accept(tCURLY_RIGHT) {
 		prop := objectProperty{}
+
 		if tok.lexeme == "get" {
 			next()
 			prop.isGetter = true
@@ -1195,7 +1265,7 @@ func parseArrayLiteral() (arrayLiteral, bool) {
 
 	al.items = []ast{}
 	for !accept(tBRACKET_RIGHT) {
-		al.items = append(al.items, parseYield())
+		al.items = append(al.items, parseSpread())
 		if !accept(tCOMMA) {
 			expect(tBRACKET_RIGHT)
 			break
@@ -1661,4 +1731,12 @@ func (ap arrayPattern) String() string {
 	}
 	result += "]"
 	return result
+}
+
+func (se spreadExpression) String() string {
+	return "..." + se.value.String()
+}
+
+func (re restExpression) String() string {
+	return "..." + re.value.String()
 }

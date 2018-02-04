@@ -157,6 +157,10 @@ func TestFunctionExpression(t *testing.T) {
 			"function(foo = ee = 321, bar) {}",
 			"function(foo=ee=321,bar){}",
 		},
+		{
+			"function(a,b,...c) {}",
+			"function(a,b,...c){}",
+		},
 	}
 
 	for _, c := range cases {
@@ -554,6 +558,10 @@ func TestObjectDestructuring(t *testing.T) {
 			"({}) = foo;",
 			"({})=foo;",
 		},
+		{
+			"var {foo,...bar=2} = doo;",
+			"var {foo,...bar=2}=doo;",
+		},
 	}
 
 	for _, c := range cases {
@@ -668,6 +676,10 @@ func TestArrayPattern(t *testing.T) {
 		{
 			"[{foo:bar = 23} = 23, foo]",
 			"[{foo:bar=23}=23,foo]",
+		},
+		{
+			"[a, ...b]",
+			"[a,...b]",
 		},
 	}
 
