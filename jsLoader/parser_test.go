@@ -593,3 +593,53 @@ func TestSwitchStatement(t *testing.T) {
 		}
 	}
 }
+
+func TestNewlineAndSemi(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			"var\n foo\n bar \n = \n 323",
+			"var foo;bar=323;",
+		},
+		{
+			"{foo}",
+			"{foo;}",
+		},
+		{
+			"var a = {foo}",
+			"var a={foo};",
+		},
+		{
+			`const {
+				addEntityType,
+
+				addEntity,
+			} = engine`,
+			"const {addEntityType,addEntity}=engine;",
+		},
+		{
+			`for(
+				i
+				;
+				i<321;
+				i++
+				);`,
+			"for(i;i<321;i++);",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		ol := parse(sourceTokens)
+		ok := true
+		if !ok {
+			t.Errorf("Program not parsed")
+		} else {
+			if c.res != ol.String() {
+				t.Errorf("Expected %s, got %s", c.res, ol)
+			}
+		}
+	}
+}

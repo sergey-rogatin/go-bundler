@@ -80,21 +80,53 @@ func backtrack(backIndex int) {
 	tok = sourceTokens[index]
 }
 
-func accept(tTypes ...tokenType) bool {
+func testType(tTypes ...tokenType) bool {
+	i := index
+	for sourceTokens[i].tType == tNEWLINE {
+		i++
+	}
 	for _, tType := range tTypes {
-		if tok.tType == tType {
-			next()
+		if sourceTokens[i].tType == tType {
 			return true
 		}
 	}
 	return false
 }
 
-func expect(tType tokenType) bool {
-	if accept(tType) {
-		return true
+func accept(tTypes ...tokenType) bool {
+	prevPos := index
+	for tok.tType == tNEWLINE {
+		next()
 	}
-	panic(fmt.Sprintf("\nExpected %s, got %s\n", tType, tok))
+	for _, tType := range tTypes {
+		if tok.tType == tType {
+			next()
+			return true
+		}
+	}
+	backtrack(prevPos)
+	return false
+}
+
+func checkASI(tType tokenType) {
+	if tType == tSEMI {
+		if tok.tType == tNEWLINE {
+			next()
+			return
+		}
+		if tok.tType == tCURLY_RIGHT || tok.tType == tEND_OF_INPUT {
+			return
+		}
+	}
+
+	panic("Unexpected token " + tok.String())
+}
+
+func expect(tType tokenType) {
+	if accept(tType) {
+		return
+	}
+	checkASI(tType)
 }
 
 func getLexeme() string {
@@ -211,7 +243,7 @@ func getSwitchStatement() (switchStatement, bool) {
 			c.statements = []ast{}
 
 			expect(tCOLON)
-			for tok.tType != tCASE && tok.tType != tDEFAULT && tok.tType != tCURLY_RIGHT {
+			for !testType(tCASE, tDEFAULT, tCURLY_RIGHT) {
 				c.statements = append(c.statements, getStatement())
 			}
 			sw.cases = append(sw.cases, c)
@@ -219,7 +251,7 @@ func getSwitchStatement() (switchStatement, bool) {
 			if accept(tDEFAULT) {
 				expect(tCOLON)
 				sw.defCase = []ast{}
-				for tok.tType != tCASE && tok.tType != tCURLY_RIGHT {
+				for !testType(tCASE, tCURLY_RIGHT) {
 					sw.defCase = append(sw.defCase, getStatement())
 				}
 			}
@@ -471,6 +503,7 @@ func getImportStatement() (importStatement, bool) {
 
 	expect(tSTRING)
 	is.path = atom{getToken()}
+	expect(tSEMI)
 
 	return is, true
 }
@@ -666,7 +699,7 @@ func getForStatement() (ast, bool) {
 	var init ast
 	if vd, ok := getVarDeclaration(); ok {
 		init = vd
-	} else if tok.tType == tSEMI {
+	} else if testType(tSEMI) {
 		init = atom{token{lexeme: ""}}
 	} else {
 		init = getSequence()
@@ -799,7 +832,7 @@ func getVarDeclaration() (varDeclaration, bool) {
 		if d, ok := getDeclarator(); ok {
 			vd.declarations = append(vd.declarations, d)
 		} else {
-			panic("Unexpected token " + tok.String())
+			checkASI(tSEMI)
 		}
 	}
 
@@ -1093,7 +1126,7 @@ func getFunctionCallOrMember(noFuncCall bool) ast {
 				}
 			}
 			funcName = fc
-		} else if accept(tDOT) || tok.tType == tBRACKET_LEFT {
+		} else if accept(tDOT) || testType(tBRACKET_LEFT) {
 			me := memberExpression{}
 			me.object = funcName
 			me.property = getPropertyName()
@@ -1168,7 +1201,7 @@ func getAtom() ast {
 	} else if accept(tNAME, tNUMBER, tSTRING, tTRUE, tFALSE, tNULL, tUNDEFINED, tTHIS) {
 		return atom{getToken()}
 	} else {
-		expect(tEND_OF_INPUT)
+		checkASI(tSEMI)
 	}
 	return nil
 }
@@ -1310,7 +1343,7 @@ func getObjectLiteral() (objectLiteral, bool) {
 		} else if fe, ok := getFunctionExpression(true); ok {
 			prop.value = fe
 		} else if prop.key.isCalculated || prop.key.isNotName {
-			expect(tEND_OF_INPUT)
+			checkASI(tSEMI)
 		}
 
 		ol.properties = append(ol.properties, prop)
@@ -1354,7 +1387,7 @@ func (fe functionExpression) String() string {
 func getFunctionExpression(isMember bool) (functionExpression, bool) {
 	fe := functionExpression{}
 	if isMember {
-		if tok.tType != tPAREN_LEFT {
+		if !testType(tPAREN_LEFT) {
 			return fe, false
 		}
 
@@ -1459,7 +1492,7 @@ func getPropertyName() propertyName {
 		expect(tBRACKET_RIGHT)
 	} else if accept(tNAME) {
 		name.value = atom{getToken()}
-	} else if isValidPropertyName(tok.lexeme) || tok.tType == tNUMBER || tok.tType == tSTRING {
+	} else if isValidPropertyName(tok.lexeme) || testType(tNUMBER, tSTRING) {
 		name.isNotName = true
 		next()
 		name.value = atom{getToken()}
@@ -1512,7 +1545,7 @@ func getForInStatement(left ast) forInStatement {
 	fs := forInStatement{}
 	if vs, ok := left.(varDeclaration); ok {
 		if len(vs.declarations) > 1 {
-			panic("Wrong left side in for-of statement")
+			panic("Wrong left side in for-in statement")
 		}
 	}
 	fs.left = left

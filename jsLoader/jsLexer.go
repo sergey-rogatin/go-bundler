@@ -130,8 +130,8 @@ func lex(src []byte) []token {
 			end()
 
 		case c == '\n':
-			skip()
-			//eat(tNEWLINE)
+			//skip()
+			eat(tNEWLINE)
 			end()
 			line++
 			column = 0
@@ -288,7 +288,10 @@ func transformIntoModule(programAst program, fileName string) (program, []string
 					}
 					vd.declarations = append(vd.declarations, decl)
 				}
-				bs.statements = append(bs.statements, vd)
+
+				declStatement := expressionStatement{}
+				declStatement.expr = vd
+				bs.statements = append(bs.statements, declStatement)
 			}
 
 		default:
