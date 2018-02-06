@@ -6,7 +6,7 @@ var sourceTokens []token
 var index int
 var tok token
 
-func parseTokens(localSrc []token) (program, error) {
+func parseTokens(localSrc []token) (astNode, error) {
 	sourceTokens = localSrc
 	index = 0
 	tok = sourceTokens[index]
@@ -135,207 +135,6 @@ func isValidPropertyName(name string) bool {
 	return true
 }
 
-// all types below implement ast interface
-
-type ast interface {
-	String() string
-}
-
-type program struct {
-	statements []ast
-}
-
-type switchCase struct {
-	condition  ast
-	statements []ast
-}
-
-type switchStatement struct {
-	condition ast
-	cases     []switchCase
-	defCase   []ast
-}
-
-type exportedVar struct {
-	name  ast
-	alias atom
-}
-
-type exportStatement struct {
-	vars        []exportedVar
-	declaration ast
-	source      atom
-	exportAll   bool
-}
-
-type importedVar struct {
-	name  atom
-	alias atom
-}
-
-type importStatement struct {
-	path atom
-	vars []importedVar
-	all  atom
-}
-
-type returnStatement struct {
-	value ast
-}
-
-type functionStatement struct {
-	funcExpr functionExpression
-}
-
-type expressionStatement struct {
-	expr ast
-}
-
-type ifStatement struct {
-	test       ast
-	consequent ast
-	alternate  ast
-}
-
-type whileStatement struct {
-	test ast
-	body ast
-}
-
-type doWhileStatement struct {
-	test ast
-	body ast
-}
-
-type emptyStatement struct{}
-
-type forStatement struct {
-	init  ast
-	test  ast
-	final ast
-	body  ast
-}
-
-type forInStatement struct {
-	left  ast
-	right ast
-	body  ast
-}
-
-type forOfStatement struct {
-	left  ast
-	right ast
-	body  ast
-}
-
-type blockStatement struct {
-	statements []ast
-}
-
-type objectPattern struct {
-	properties []objectProperty
-}
-
-type arrayPattern struct {
-	properties []declarator
-}
-
-type declarator struct {
-	left  ast
-	value ast
-}
-
-type varDeclaration struct {
-	declarations []declarator
-	keyword      atom
-}
-
-type sequenceExpression struct {
-	items []ast
-}
-
-type yieldExpression struct {
-	value ast
-}
-
-type binaryExpression struct {
-	left     ast
-	right    ast
-	operator atom
-}
-
-type conditionalExpression struct {
-	test       ast
-	consequent ast
-	alternate  ast
-}
-
-type unaryExpression struct {
-	value     ast
-	operator  atom
-	isPostfix bool
-}
-
-type spreadExpression struct {
-	value ast
-}
-
-type restExpression struct {
-	value ast
-}
-
-type functionCall struct {
-	name          ast
-	args          []ast
-	isConstructor bool
-}
-
-type memberExpression struct {
-	object   ast
-	property propertyName
-}
-
-type lambdaExpression struct {
-	args []declarator
-	body ast
-}
-
-type functionExpression struct {
-	name     atom
-	args     []declarator
-	body     blockStatement
-	isMember bool
-}
-
-type propertyName struct {
-	value        ast
-	isCalculated bool
-	isNotName    bool
-}
-
-type objectProperty struct {
-	key      propertyName
-	value    ast
-	isGetter bool
-	isSetter bool
-}
-
-type objectLiteral struct {
-	properties []objectProperty
-}
-
-type arrayLiteral struct {
-	items []ast
-}
-
-type parenExpression struct {
-	inner ast
-}
-
-type atom struct {
-	val token
-}
-
 type operatorInfo struct {
 	precedence         int
 	isRightAssociative bool
@@ -379,129 +178,122 @@ var operatorTable = map[tokenType]operatorInfo{
 	tEXP:   operatorInfo{15, true},
 }
 
-func parseProgram() (p program, err error) {
-	p = program{}
-	p.statements = []ast{}
+const (
+	f_FUNCTION_PARAM_REST = 1 << 0
+)
+
+type astNode struct {
+	t        grammarType
+	value    string
+	children []astNode
+	flags    int
+}
+
+func (a astNode) String() string {
+	result := "{" + fmt.Sprint(a.t)
+	if a.value != "" {
+		result += ", " + a.value
+	}
+	if a.children != nil {
+		result += ", " + fmt.Sprint(a.children)
+	}
+	result += "}"
+	return result
+}
+
+func makeNode(t grammarType, value string, children ...astNode) astNode {
+	return astNode{t, value, children, 0}
+}
+
+func parseProgram() (program astNode, err error) {
 	err = nil
 
 	defer func() {
 		if r := recover(); r != nil {
-			if pe, ok := r.(parsingError); ok {
-				err = pe
+			if e, ok := r.(parsingError); ok {
+				err = e
 			}
 		}
 	}()
 
+	statements := []astNode{}
 	for !accept(tEND_OF_INPUT) {
-		p.statements = append(p.statements, parseStatement())
+		statements = append(statements, parseStatement())
 	}
+
+	program = makeNode(g_PROGRAM_STATEMENT, "", statements...)
 	return
 }
 
-func parseStatement() ast {
-	var st ast
-
-	if s, ok := parseEmptyStatement(); ok {
-		st = s
-	} else if s, ok := parseForStatement(); ok {
-		st = s
-	} else if s, ok := parseWhileStatement(); ok {
-		st = s
-	} else if s, ok := parseDoWhileStatement(); ok {
-		st = s
-	} else if s, ok := parseBlockStatement(); ok {
-		st = s
-	} else if s, ok := parseIfStatement(); ok {
-		st = s
-	} else if s, ok := parseFunctionStatement(); ok {
-		st = s
-	} else if s, ok := parseReturnStatement(); ok {
-		st = s
-	} else if s, ok := parseImportStatement(); ok {
-		st = s
-	} else if s, ok := parseSwitchStatement(); ok {
-		st = s
-	} else if s, ok := parseExportStatement(); ok {
-		st = s
-	} else {
-		st = parseExpressionStatement()
+func parseStatement() astNode {
+	switch {
+	case accept(tVAR, tCONST, tLET):
+		return parseDeclarationStatement()
+	case accept(tRETURN):
+		return parseReturnStatement()
+	case accept(tIMPORT):
+		return parseImportStatement()
+	case accept(tFUNCTION):
+		return parseFunctionDeclaration()
+	case accept(tDO):
+		return parseDoWhileStatement()
+	case accept(tWHILE):
+		return parseWhileStatement()
+	case accept(tFOR):
+		return parseForStatement()
+	case accept(tCURLY_LEFT):
+		return parseBlockStatement()
+	case accept(tIF):
+		return parseIfStatement()
+	case accept(tEXPORT):
+		return parseExportStatement()
+	case accept(tSWITCH):
+		return parseSwitchStatement()
+	case accept(tSEMI):
+		return makeNode(g_EMPTY_STATEMENT, ";")
+	default:
+		return parseExpressionStatement()
 	}
-
-	return st
 }
 
-func parseSwitchStatement() (switchStatement, bool) {
-	sw := switchStatement{}
-	if !accept(tSWITCH) {
-		return sw, false
-	}
-
-	expect(tPAREN_LEFT)
-	sw.condition = parseSequence()
-	expect(tPAREN_RIGHT)
-	expect(tCURLY_LEFT)
-
-	sw.cases = []switchCase{}
-	for !accept(tCURLY_RIGHT) {
-		if accept(tCASE) {
-			c := switchCase{}
-			c.condition = parseSequence()
-			c.statements = []ast{}
-
-			expect(tCOLON)
-			for !test(tCASE, tDEFAULT, tCURLY_RIGHT) {
-				c.statements = append(c.statements, parseStatement())
-			}
-			sw.cases = append(sw.cases, c)
-
-			if accept(tDEFAULT) {
-				expect(tCOLON)
-				sw.defCase = []ast{}
-				for !test(tCASE, tCURLY_RIGHT) {
-					sw.defCase = append(sw.defCase, parseStatement())
-				}
-			}
-		}
-	}
-
-	return sw, true
-}
-
-func parseExportStatement() (exportStatement, bool) {
-	es := exportStatement{}
-	if !accept(tEXPORT) {
-		return es, false
-	}
-	es.vars = []exportedVar{}
+func parseExportStatement() astNode {
+	declaration := makeNode(g_EXPORT_DECLARATION, "")
+	path := makeNode(g_EXPORT_PATH, "")
+	vars := []astNode{}
 
 	if accept(tDEFAULT) {
-		ev := exportedVar{}
-		ev.alias = atom{makeToken("default")}
 
-		if fe, ok := parseFunctionExpression(false); ok {
-			if fe.name.val.lexeme != "" {
-				es.declaration = fe
-				ev.name = fe.name
+		var name astNode
+		alias := makeNode(g_EXPORT_ALIAS, "default")
+
+		if accept(tFUNCTION) {
+			fe := parseFunctionExpression()
+			if fe.value != "" {
+				declaration = fe
+				name = makeNode(g_EXPORT_NAME, fe.value)
 			} else {
-				ev.name = fe
+				name = fe
 			}
 		} else {
-			ev.name = parseYield()
+			name = parseExpression()
 		}
 
+		ev := makeNode(g_EXPORT_VAR, "", name, alias)
+		vars = append(vars, ev)
 		expect(tSEMI)
-		es.vars = append(es.vars, ev)
 
 	} else if accept(tCURLY_LEFT) {
 		for !accept(tCURLY_RIGHT) {
 			if accept(tNAME) {
-				ev := exportedVar{}
-				ev.name = atom{getToken()}
+				name := makeNode(g_EXPORT_NAME, getLexeme())
+				alias := name
+
 				if accept(tAS) {
 					next()
-					ev.alias = atom{getToken()}
+					alias = makeNode(g_EXPORT_ALIAS, getLexeme())
 				}
-				es.vars = append(es.vars, ev)
+				ev := makeNode(g_EXPORT_VAR, "", name, alias)
+				vars = append(vars, ev)
 			}
 
 			if !accept(tCOMMA) {
@@ -512,392 +304,240 @@ func parseExportStatement() (exportStatement, bool) {
 
 		if accept(tFROM) {
 			expect(tSTRING)
-			es.source = atom{getToken()}
+			path = makeNode(g_EXPORT_PATH, getLexeme())
 		}
 		expect(tSEMI)
 
-	} else if vd, ok := parseVarDeclaration(); ok {
-		es.declaration = vd
-		expect(tSEMI)
-		for _, d := range vd.declarations {
-			ev := exportedVar{}
-			ev.name = d.left
-			es.vars = append(es.vars, ev)
+	} else if accept(tVAR, tLET, tCONST) {
+		declaration = parseDeclarationStatement()
+		for _, d := range declaration.children[0].children {
+			name := d.children[0]
+			alias := d.children[0]
+			ev := makeNode(g_EXPORT_VAR, "", name, alias)
+
+			vars = append(vars, ev)
 		}
 
-	} else if fs, ok := parseFunctionStatement(); ok {
-		es.declaration = fs
-		ev := exportedVar{}
-		ev.name = fs.funcExpr.name
-		es.vars = append(es.vars, ev)
+	} else if accept(tFUNCTION) {
+		fs := parseFunctionDeclaration()
+		declaration = fs
+		name := makeNode(g_EXPORT_NAME, fs.value)
+		alias := name
+		ev := makeNode(g_EXPORT_VAR, "", name, alias)
+		vars = append(vars, ev)
 
 	} else if accept(tMULT) {
-		expect(tFROM)
-		expect(tSTRING)
-		es.source = atom{getToken()}
-		es.exportAll = true
-		expect(tSEMI)
+		// expect(tFROM)
+		// expect(tSTRING)
+		// path = makeNode(g_EXPORT_PATH, getLexeme())
+		// es.exportAll = true
+		// expect(tSEMI)
 	}
+	varsNode := makeNode(g_EXPORT_VARS, "", vars...)
 
-	return es, true
+	return makeNode(g_EXPORT_STATEMENT, "", varsNode, declaration, path)
 }
 
-func parseImportStatement() (importStatement, bool) {
-	is := importStatement{}
-	if !accept(tIMPORT) {
-		return is, false
-	}
-	is.vars = []importedVar{}
+func parseSwitchStatement() astNode {
+	expect(tPAREN_LEFT)
+	condition := parseExpression()
+	expect(tPAREN_RIGHT)
 
-	if accept(tMULT) {
-		expect(tAS)
-		expect(tNAME)
-		is.all = atom{getToken()}
-		expect(tFROM)
-	} else {
-		if accept(tNAME) {
-			v := importedVar{}
-			v.name = atom{makeToken("default")}
-			v.alias = atom{getToken()}
-			is.vars = append(is.vars, v)
-
-			if accept(tCOMMA) {
-				if accept(tMULT) {
-					expect(tAS)
-					expect(tNAME)
-					is.all = atom{getToken()}
-					expect(tFROM)
-				}
-			} else {
-				expect(tFROM)
+	cases := []astNode{}
+	expect(tCURLY_LEFT)
+	for !accept(tCURLY_RIGHT) {
+		if accept(tCASE) {
+			caseTest := makeNode(g_SWITCH_CASE_TEST, "", parseExpression())
+			expect(tCOLON)
+			caseStatements := []astNode{}
+			for !test(tDEFAULT, tCASE, tCURLY_RIGHT) {
+				caseStatements = append(caseStatements, parseStatement())
 			}
+			statementNode := makeNode(
+				g_SWITCH_CASE_STATEMENTS, "", caseStatements...,
+			)
+			switchCase := makeNode(
+				g_SWITCH_CASE, "", caseTest, statementNode,
+			)
+			cases = append(cases, switchCase)
 		}
 
-		if accept(tCURLY_LEFT) {
-			for !accept(tCURLY_RIGHT) {
-				if accept(tNAME, tDEFAULT) {
-					v := importedVar{}
-					v.name = atom{getToken()}
-
-					if accept(tAS) {
-						expect(tNAME)
-						v.alias = atom{getToken()}
-					}
-
-					is.vars = append(is.vars, v)
-				}
-
-				if !accept(tCOMMA) {
-					expect(tCURLY_RIGHT)
-					break
-				}
+		if accept(tDEFAULT) {
+			expect(tCOLON)
+			caseStatements := []astNode{}
+			for !test(tDEFAULT, tCASE, tCURLY_RIGHT) {
+				caseStatements = append(caseStatements, parseStatement())
 			}
-
-			expect(tFROM)
+			defaultCase := makeNode(g_SWITCH_DEFAULT, "", caseStatements...)
+			cases = append(cases, defaultCase)
 		}
 	}
 
-	expect(tSTRING)
-	is.path = atom{getToken()}
+	casesNode := makeNode(g_SWITCH_CASES, "", cases...)
+	return makeNode(g_SWITCH_STATEMENT, "", condition, casesNode)
+}
+
+func parseDeclarationStatement() astNode {
+	decl := makeNode(
+		g_DECLARATION_STATEMENT, "", parseDeclarationExpression(),
+	)
 	expect(tSEMI)
-
-	return is, true
+	return decl
 }
 
-func parseReturnStatement() (returnStatement, bool) {
-	rs := returnStatement{}
-	if !accept(tRETURN) {
-		return rs, false
+func parseDeclarationExpression() astNode {
+	keyword := getLexeme()
+
+	ve := makeNode(g_DECLARATION_EXPRESSION, keyword, []astNode{}...)
+	for ok := true; ok; ok = accept(tCOMMA) {
+		ve.children = append(ve.children, parseDeclarator())
 	}
-	if !accept(tSEMI) {
-		rs.value = parseYield()
-		expect(tSEMI)
-	}
-	return rs, true
+
+	return ve
 }
 
-func parseFunctionStatement() (functionStatement, bool) {
-	fs := functionStatement{}
-
-	if fe, ok := parseFunctionExpression(false); ok {
-		if fe.name.val.lexeme == "" {
-			panic(parsingError{p_UNNAMED_FUNCTION, tok})
-		} else {
-			fs.funcExpr = fe
-			return fs, true
-		}
-	}
-
-	return fs, false
-}
-
-func parseExpressionStatement() expressionStatement {
-	es := expressionStatement{}
-	if vd, ok := parseVarDeclaration(); ok {
-		es.expr = vd
-	} else if accept(tCONTINUE, tDEBUGGER, tBREAK) {
-		es.expr = atom{getToken()}
-	} else {
-		es.expr = parseSequence()
-	}
-	expect(tSEMI)
-	return es
-}
-
-func parseIfStatement() (ifStatement, bool) {
-	is := ifStatement{}
-
-	if !accept(tIF) {
-		return is, false
-	}
+func parseForStatement() astNode {
 	expect(tPAREN_LEFT)
-	is.test = parseSequence()
-	expect(tPAREN_RIGHT)
-	is.consequent = parseStatement()
-
-	if accept(tELSE) {
-		is.alternate = parseStatement()
-	}
-
-	return is, true
-}
-
-func parseWhileStatement() (whileStatement, bool) {
-	ws := whileStatement{}
-	if !accept(tWHILE) {
-		return ws, false
-	}
-	expect(tPAREN_LEFT)
-	ws.test = parseSequence()
-	expect(tPAREN_RIGHT)
-	ws.body = parseStatement()
-
-	return ws, true
-}
-
-func parseDoWhileStatement() (doWhileStatement, bool) {
-	ds := doWhileStatement{}
-
-	if !accept(tDO) {
-		return ds, false
-	}
-
-	ds.body = parseStatement()
-	expect(tWHILE)
-	expect(tPAREN_LEFT)
-	ds.test = parseSequence()
-	expect(tPAREN_RIGHT)
-
-	return ds, true
-}
-
-func parseEmptyStatement() (emptyStatement, bool) {
-	es := emptyStatement{}
-	if accept(tSEMI) {
-		return es, true
-	}
-	return es, false
-}
-
-func parseForStatement() (ast, bool) {
-	if !accept(tFOR) {
-		return nil, false
-	}
-	expect(tPAREN_LEFT)
-
-	var init ast
-	if vd, ok := parseVarDeclaration(); ok {
-		init = vd
+	var init astNode
+	if accept(tVAR, tLET, tCONST) {
+		init = parseDeclarationExpression()
 	} else if test(tSEMI) {
-		init = atom{token{lexeme: ""}}
+		init = makeNode(g_EMPTY_EXPRESSION, "")
 	} else {
 		init = parseSequence()
 	}
 
 	if accept(tOF) {
-		return parseForOfStatement(init), true
-	} else if accept(tIN) {
-		return parseForInStatement(init), true
-	}
-
-	fs := forStatement{}
-	fs.init = init
-	expect(tSEMI)
-
-	if accept(tSEMI) {
-		fs.test = atom{token{lexeme: ""}}
-	} else {
-		fs.test = parseSequence()
-		expect(tSEMI)
-	}
-
-	if accept(tPAREN_RIGHT) {
-		fs.final = atom{token{lexeme: ""}}
-	} else {
-		fs.final = parseSequence()
+		left := init
+		right := parseExpression()
 		expect(tPAREN_RIGHT)
-	}
-	fs.body = parseStatement()
-
-	return fs, true
-}
-
-func parseObjectPattern() (objectPattern, bool) {
-	startPos := index
-
-	op := objectPattern{}
-	if !accept(tCURLY_LEFT) {
-		return op, false
-	}
-	op.properties = []objectProperty{}
-
-	for !accept(tCURLY_RIGHT) {
-		prop := objectProperty{}
-		if accept(tSPREAD) {
-			prop.key.value = restExpression{parseAssignment()}
-		} else {
-			prop.key = parsePropertyName()
-			if accept(tCOLON) {
-				prop.value = parseAssignment()
-			}
-		}
-		op.properties = append(op.properties, prop)
-
-		if !accept(tCOMMA) {
-			if !accept(tCURLY_RIGHT) {
-				backtrack(startPos)
-				return op, false
-			}
-			break
-		}
-	}
-
-	return op, true
-}
-
-func parseArrayPattern() (arrayPattern, bool) {
-	ap := arrayPattern{}
-
-	if !accept(tBRACKET_LEFT) {
-		return ap, false
-	}
-
-	ap.properties = []declarator{}
-	for ok := true; ok; ok = accept(tCOMMA) {
-		d, _ := parseDeclarator(false)
-		ap.properties = append(ap.properties, d)
-	}
-	expect(tBRACKET_RIGHT)
-
-	return ap, true
-}
-
-func parseDeclarator(isFunctionArg bool) (declarator, bool) {
-	d := declarator{}
-
-	if accept(tSPREAD) {
-		re := restExpression{}
-		if accept(tNAME) {
-			re.value = atom{getToken()}
-		} else if op, ok := parseObjectPattern(); ok {
-			re.value = op
-		} else {
-			return d, false
-		}
-		d.left = re
-		if isFunctionArg {
-			return d, true
-		}
+		body := parseStatement()
+		return makeNode(g_FOR_OF_STATEMENT, "", left, right, body)
+	} else if accept(tIN) {
+		left := init
+		right := parseExpression()
+		expect(tPAREN_RIGHT)
+		body := parseStatement()
+		return makeNode(g_FOR_IN_STATEMENT, "", left, right, body)
 	} else {
-		if accept(tNAME) {
-			d.left = atom{getToken()}
-		} else if op, ok := parseObjectPattern(); ok {
-			d.left = op
+		var test, final astNode
+
+		expect(tSEMI)
+		if accept(tSEMI) {
+			test = makeNode(g_EMPTY_EXPRESSION, "")
 		} else {
-			return d, false
+			test = parseExpression()
+			expect(tSEMI)
 		}
-	}
 
-	if accept(tASSIGN) {
-		d.value = parseAssignment()
-	}
-
-	return d, true
-}
-
-func parseDeclaratorNoSpread() (declarator, bool) {
-	d := declarator{}
-
-	if accept(tNAME) {
-		d.left = atom{getToken()}
-	} else if op, ok := parseObjectPattern(); ok {
-		d.left = op
-	} else {
-		return d, false
-	}
-
-	if accept(tASSIGN) {
-		d.value = parseAssignment()
-	}
-
-	return d, true
-}
-
-func parseVarDeclaration() (varDeclaration, bool) {
-	vd := varDeclaration{}
-	if !accept(tVAR, tLET, tCONST) {
-		return vd, false
-	}
-	vd.keyword = atom{getToken()}
-	vd.declarations = []declarator{}
-
-	for ok := true; ok; ok = accept(tCOMMA) {
-		if d, ok := parseDeclaratorNoSpread(); ok {
-			vd.declarations = append(vd.declarations, d)
+		if accept(tPAREN_RIGHT) {
+			final = makeNode(g_EMPTY_EXPRESSION, "")
 		} else {
-			checkASI(tSEMI)
+			final = parseExpression()
+			expect(tPAREN_RIGHT)
 		}
-	}
 
-	return vd, true
+		body := parseStatement()
+
+		return makeNode(g_FOR_STATEMENT, "", init, test, final, body)
+	}
 }
 
-func parseSequence() ast {
+func parseIfStatement() astNode {
+	expect(tPAREN_LEFT)
+	test := parseExpression()
+	expect(tPAREN_RIGHT)
+	body := parseStatement()
+	if accept(tELSE) {
+		alternate := parseStatement()
+		return makeNode(g_IF_STATEMENT, "", test, body, alternate)
+	}
+
+	return makeNode(g_IF_STATEMENT, "", test, body)
+}
+
+func parseWhileStatement() astNode {
+	expect(tPAREN_LEFT)
+	test := parseExpression()
+	expect(tPAREN_RIGHT)
+	body := parseStatement()
+
+	return makeNode(g_WHILE_STATEMENT, "", test, body)
+}
+
+func parseDoWhileStatement() astNode {
+	body := parseStatement()
+	expect(tWHILE)
+	expect(tPAREN_LEFT)
+	test := parseExpression()
+	expect(tPAREN_RIGHT)
+
+	return makeNode(g_DO_WHILE_STATEMENT, "", test, body)
+}
+
+func parseFunctionDeclaration() astNode {
+	expect(tNAME)
+	name := getLexeme()
+
+	expect(tPAREN_LEFT)
+	params := parseFunctionParameters()
+	expect(tCURLY_LEFT)
+	body := parseBlockStatement()
+
+	return makeNode(g_FUNCTION_DECLARATION, name, params, body)
+}
+
+func parseExpressionStatement() astNode {
+	if accept(tBREAK) {
+		return makeNode(g_BREAK_STATEMENT, "")
+	} else if accept(tCONTINUE) {
+		return makeNode(g_CONTINUE_STATEMENT, "")
+	} else if accept(tDEBUGGER) {
+		return makeNode(g_DEBUGGER_STATEMENT, "")
+	}
+	expr := makeNode(g_EXPRESSION_STATEMENT, "", parseExpression())
+	expect(tSEMI)
+	return expr
+}
+
+func parseReturnStatement() astNode {
+	return makeNode(g_RETURN_STATEMENT, "", parseExpression())
+}
+
+func parseExpression() astNode {
+	return parseSequence()
+}
+
+func parseSequence() astNode {
 	firstItem := parseYield()
 
-	se := sequenceExpression{}
-	se.items = []ast{firstItem}
+	children := []astNode{firstItem}
 	for accept(tCOMMA) {
-		se.items = append(se.items, parseYield())
-	}
-	if len(se.items) > 1 {
-		return se
+		children = append(children, parseYield())
 	}
 
+	if len(children) > 1 {
+		return makeNode(g_SEQUENCE_EXPRESSION, ",", children...)
+	}
 	return firstItem
 }
 
-func parseYield() ast {
+func parseYield() astNode {
 	if accept(tYIELD) {
-		ye := yieldExpression{}
-		ye.value = parseYield()
-		return ye
+		return makeNode(g_EXPRESSION, "yield", parseYield())
 	}
 	return parseAssignment()
 }
 
-func parseAssignment() ast {
-	if op, ok := parseObjectPattern(); ok {
-		binExpr := binaryExpression{}
-		binExpr.left = op
+func parseAssignment() astNode {
+	// if accept(tCURLY_LEFT) {
+	// 	left := parseObjectPattern()
 
-		if accept(tASSIGN) {
-			binExpr.operator = atom{getToken()}
-			binExpr.right = parseAssignment()
-			return binExpr
-		}
-		return binExpr.left
-	}
+	// 	if accept(tASSIGN) {
+	// 		right := parseAssignment()
+	// 		return makeNode(g_EXPRESSION, "=", left, right)
+	// 	}
+	// }
 
 	left := parseConditional()
 
@@ -907,47 +547,81 @@ func parseAssignment() ast {
 		tBITWISE_SHIFT_RIGHT_ZERO_ASSIGN, tBITWISE_AND_ASSIGN,
 		tBITWISE_OR_ASSIGN, tBITWISE_XOR_ASSIGN,
 	) {
-		binExpr := binaryExpression{}
-		binExpr.operator = atom{getToken()}
-		binExpr.left = left
-		binExpr.right = parseAssignment()
-
-		return binExpr
+		op := getLexeme()
+		right := parseAssignment()
+		return makeNode(g_EXPRESSION, op, left, right)
 	}
 
 	return left
 }
 
-func parseConditional() ast {
+func parseAssignmentPattern() astNode {
+	var left astNode
+	if accept(tCURLY_LEFT) {
+		left = parseObjectPattern()
+	} else if accept(tNAME) {
+		left = makeNode(g_NAME, getLexeme())
+	} else {
+		checkASI(tSEMI)
+	}
+
+	if accept(tASSIGN) {
+		right := parseExpression()
+		return makeNode(g_ASSIGNMENT_PATTERN, "=", left, right)
+	}
+
+	return left
+}
+
+func parseObjectPattern() astNode {
+	properties := []astNode{}
+	for !accept(tCURLY_RIGHT) {
+		if accept(tNAME) {
+			prop := makeNode(g_OBJECT_PROPERTY, "", []astNode{}...)
+			key := makeNode(g_NAME, getLexeme())
+			prop.children = append(prop.children, key)
+
+			if accept(tCOLON) {
+				prop.children = append(prop.children, parseAssignmentPattern())
+			}
+
+			properties = append(properties, prop)
+		}
+
+		if !accept(tCOMMA) {
+			expect(tCURLY_RIGHT)
+			break
+		}
+	}
+
+	return makeNode(g_OBJECT_PATTERN, "", properties...)
+}
+
+func parseConditional() astNode {
 	test := parseBinary()
 
 	if accept(tQUESTION) {
-		condExp := conditionalExpression{}
-		condExp.test = test
-		condExp.consequent = parseConditional()
-		expect(tCOLON)
-		condExp.alternate = parseConditional()
-		return condExp
+		consequent := parseConditional()
+		alternate := parseConditional()
+		return makeNode(g_EXPRESSION, "?", test, consequent, alternate)
 	}
 
 	return test
 }
 
-func parseBinary() ast {
+func parseBinary() astNode {
 	opStack := make([]token, 0)
-	outputStack := make([]ast, 0)
-
-	var root *binaryExpression
+	outputStack := make([]astNode, 0)
+	var root *astNode
 
 	addNode := func(t token) {
-		newNode := binaryExpression{}
-		newNode.right = outputStack[len(outputStack)-1]
-		newNode.left = outputStack[len(outputStack)-2]
-		newNode.operator = atom{t}
+		right := outputStack[len(outputStack)-1]
+		left := outputStack[len(outputStack)-2]
+		nn := makeNode(g_EXPRESSION, t.lexeme, left, right)
 
 		outputStack = outputStack[:len(outputStack)-2]
-		outputStack = append(outputStack, newNode)
-		root = &newNode
+		outputStack = append(outputStack, nn)
+		root = &nn
 	}
 
 	for {
@@ -987,750 +661,815 @@ func parseBinary() ast {
 	return outputStack[len(outputStack)-1]
 }
 
-func parsePrefixUnary() ast {
+func parsePrefixUnary() astNode {
 	if accept(
 		tNOT, tBITWISE_NOT, tPLUS, tMINUS,
 		tINC, tDEC, tTYPEOF, tVOID, tDELETE,
 	) {
-		unExp := unaryExpression{}
-		unExp.operator = atom{getToken()}
-		unExp.value = parsePostfixUnary()
-		return unExp
+		return makeNode(
+			g_UNARY_PREFIX_EXPRESSION, getLexeme(), parsePostfixUnary(),
+		)
 	}
 
 	return parsePostfixUnary()
 }
 
-func parsePostfixUnary() ast {
+func parsePostfixUnary() astNode {
 	value := parseFunctionCallOrMember(false)
 
 	if accept(tINC, tDEC) {
-		unExp := unaryExpression{}
-		unExp.isPostfix = true
-		unExp.operator = atom{getToken()}
-		unExp.value = value
-		return unExp
+		return makeNode(g_UNARY_POSTFIX_EXPRESSION, getLexeme(), value)
 	}
 
 	return value
 }
 
-func parseSpread() ast {
-	if accept(tSPREAD) {
-		return spreadExpression{parseYield()}
+func parseFunctionArgs() astNode {
+	args := []astNode{}
+
+	for !accept(tPAREN_RIGHT) {
+		args = append(args, parseExpression())
+
+		if !accept(tCOMMA) {
+			expect(tPAREN_RIGHT)
+			break
+		}
 	}
-	return parseYield()
+
+	argsNode := makeNode(g_FUNCTION_ARGS, "", args...)
+
+	return argsNode
 }
 
-func parseFunctionCallOrMember(noFuncCall bool) ast {
+func parseFunctionCallOrMember(onlyMember bool) astNode {
 	funcName := parseConstructorCall()
 
 	for {
-		if !noFuncCall && accept(tPAREN_LEFT) {
-			fc := functionCall{}
-			fc.name = funcName
-			fc.args = []ast{}
+		if !onlyMember && accept(tPAREN_LEFT) {
+			argsNode := parseFunctionArgs()
+			n := makeNode(g_FUNCTION_CALL, "", funcName, argsNode)
 
-			for !accept(tPAREN_RIGHT) {
-				fc.args = append(fc.args, parseSpread())
-				if !accept(tCOMMA) {
-					expect(tPAREN_RIGHT)
-					break
-				}
-			}
-			funcName = fc
-		} else if accept(tDOT) || test(tBRACKET_LEFT) {
-			me := memberExpression{}
-			me.object = funcName
-			me.property = parsePropertyName()
-			funcName = me
+			funcName = n
 		} else {
-			break
+			var property astNode
+
+			if accept(tDOT) {
+				expect(tNAME)
+				property = makeNode(g_NAME, getLexeme())
+			} else if accept(tBRACKET_LEFT) {
+				property = parseCalculatedPropertyName()
+			} else {
+				break
+			}
+			object := funcName
+
+			me := makeNode(g_MEMBER_EXPRESSION, "", object, property)
+			funcName = me
 		}
 	}
 
 	return funcName
 }
 
-func parseConstructorCall() ast {
+func parseConstructorCall() astNode {
 	if accept(tNEW) {
-		fc := functionCall{}
-		fc.name = parseFunctionCallOrMember(true)
-		fc.isConstructor = true
-
+		name := parseFunctionCallOrMember(true)
 		if accept(tPAREN_LEFT) {
-			fc.args = []ast{}
-
-			for !accept(tPAREN_RIGHT) {
-				fc.args = append(fc.args, parseYield())
-				if !accept(tCOMMA) {
-					expect(tPAREN_RIGHT)
-					break
-				}
-			}
+			return makeNode(
+				g_CONSTRUCTOR_CALL, "", name, parseFunctionArgs(),
+			)
 		}
-
-		return fc
+		return makeNode(g_CONSTRUCTOR_CALL, "", name)
 	}
 
 	return parseAtom()
 }
 
-func parseAtom() ast {
-	if a, ok := parseLambda(); ok {
-		return a
-	} else if a, ok := parseParens(); ok {
-		return a
-	} else if a, ok := parseObjectLiteral(); ok {
-		return a
-	} else if a, ok := parseFunctionExpression(false); ok {
-		return a
-	} else if a, ok := parseArrayLiteral(); ok {
-		return a
-	} else if accept(tNAME, tNUMBER, tSTRING, tTRUE, tFALSE, tNULL, tUNDEFINED, tTHIS) {
-		return atom{getToken()}
-	} else {
+func parseAtom() astNode {
+	switch {
+	case accept(tPAREN_LEFT):
+		return parseParensOrLambda()
+	case accept(tCURLY_LEFT):
+		return parseObjectLiteral()
+	case accept(tFUNCTION):
+		return parseFunctionExpression()
+	case accept(tBRACKET_LEFT):
+		return parseArrayLiteral()
+	case accept(tNAME):
+		return parseLambdaOrName()
+	case accept(tNUMBER):
+		return makeNode(g_NUMBER_LITERAL, getLexeme())
+	case accept(tSTRING):
+		return makeNode(g_STRING_LITERAL, getLexeme())
+	case accept(tNULL):
+		return makeNode(g_NULL, getLexeme())
+	case accept(tUNDEFINED):
+		return makeNode(g_UNDEFINED, getLexeme())
+	case accept(tTRUE, tFALSE):
+		return makeNode(g_BOOL_LITERAL, getLexeme())
+	case accept(tTHIS):
+		return makeNode(g_THIS, getLexeme())
+
+	default:
 		checkASI(tSEMI)
 	}
-	return nil
+	return astNode{}
 }
 
-func parseLambda() (lambdaExpression, bool) {
-	startPos := index
+func parseParensOrLambda() astNode {
+	prevPos := index
 
-	le := lambdaExpression{}
-	if accept(tNAME) {
-		le.args = []declarator{declarator{left: atom{getToken()}}}
-	} else if args, ok := parseFunctionArgs(); ok {
-		le.args = args
-	}
+	params := parseFunctionParameters()
 
-	if le.args != nil {
-		if !accept(tLAMBDA) {
-			backtrack(startPos)
-			return le, false
-		}
-
-		if bs, ok := parseBlockStatement(); ok {
-			le.body = bs
+	if accept(tLAMBDA) {
+		var body astNode
+		if accept(tCURLY_LEFT) {
+			body = parseBlockStatement()
 		} else {
-			le.body = parseYield()
+			body = parseYield()
 		}
-		return le, true
+		return makeNode(g_LAMBDA_EXPRESSION, "", params, body)
 	}
 
-	backtrack(startPos)
-	return le, false
+	backtrack(prevPos)
+
+	var value astNode
+	if !accept(tPAREN_RIGHT) {
+		value = parseExpression()
+		expect(tPAREN_RIGHT)
+	}
+
+	return makeNode(g_PARENS_EXPRESSION, "", value)
 }
 
-func parseFunctionArgs() ([]declarator, bool) {
+func parseFunctionParameters() astNode {
 	startPos := index
-	if !accept(tPAREN_LEFT) {
-		return nil, false
-	}
 
-	args := []declarator{}
+	result := astNode{g_FUNCTION_PARAMETERS, "", nil, 0}
+	params := []astNode{}
 	for !accept(tPAREN_RIGHT) {
-		if d, ok := parseDeclarator(true); ok {
-			args = append(args, d)
-			if _, ok := d.left.(restExpression); ok {
-				expect(tPAREN_RIGHT)
-				break
-			}
-		} else if !accept(tPAREN_RIGHT) {
-			backtrack(startPos)
-			return nil, false
-		}
+		params = append(params, parseFunctionParameter())
 
 		if !accept(tCOMMA) {
 			if !accept(tPAREN_RIGHT) {
 				backtrack(startPos)
-				return nil, false
+				return result
 			}
 			break
 		}
 	}
-
-	return args, true
+	result.children = params
+	return result
 }
 
-func parseParens() (ast, bool) {
-	if !accept(tPAREN_LEFT) {
-		return nil, false
+func parseFunctionExpression() astNode {
+	name := ""
+	if accept(tNAME) {
+		name = getLexeme()
 	}
-	res := parseSequence()
-	expect(tPAREN_RIGHT)
-	return parenExpression{res}, true
+
+	expect(tPAREN_LEFT)
+	params := parseFunctionParameters()
+	expect(tCURLY_LEFT)
+	body := parseBlockStatement()
+
+	return makeNode(g_FUNCTION_EXPRESSION, name, params, body)
 }
 
-func parseObjectLiteral() (objectLiteral, bool) {
-	ol := objectLiteral{}
-
-	if !accept(tCURLY_LEFT) {
-		return ol, false
-	}
-
-	ol.properties = []objectProperty{}
+func parseObjectLiteral() astNode {
+	props := []astNode{}
 
 	for !accept(tCURLY_RIGHT) {
-		prop := objectProperty{}
+		prop := astNode{g_OBJECT_PROPERTY, "", []astNode{}, 0}
+		var key, value astNode
 
 		if tok.lexeme == "get" {
 			next()
-			prop.isGetter = true
+			prop.value = getLexeme()
 		} else if tok.lexeme == "set" {
 			next()
-			prop.isSetter = true
+			prop.value = getLexeme()
 		}
 
-		prop.key = parsePropertyName()
+		if accept(tNAME) {
+			key = makeNode(g_NAME, getLexeme())
+		} else if accept(tBRACKET_LEFT) {
+			key = parseCalculatedPropertyName()
+		} else if isValidPropertyName(tok.lexeme) || test(tNUMBER) {
+			next()
+			key = makeNode(g_VALID_PROPERTY_NAME, getLexeme())
+		}
+		prop.children = append(prop.children, key)
 
-		if prop.isGetter || prop.isSetter {
-			if fe, ok := parseFunctionExpression(true); ok {
-				prop.value = fe
-			} else {
-				checkASI(tSEMI)
-			}
-		} else {
-			if accept(tCOLON) {
-				prop.value = parseYield()
-			} else if fe, ok := parseFunctionExpression(true); ok {
-				prop.value = fe
-			} else if prop.key.isCalculated || prop.key.isNotName {
-				checkASI(tSEMI)
-			}
+		if test(tPAREN_LEFT) {
+			value = parseMemberFunction()
+			prop.children = append(prop.children, value)
+		} else if accept(tCOLON) {
+			value = parseYield()
+			prop.children = append(prop.children, value)
 		}
 
-		ol.properties = append(ol.properties, prop)
+		props = append(props, prop)
 		if !accept(tCOMMA) {
 			expect(tCURLY_RIGHT)
 			break
 		}
 	}
 
-	return ol, true
+	return makeNode(g_OBJECT_LITERAL, "", props...)
 }
 
-func parseFunctionExpression(isMember bool) (functionExpression, bool) {
-	fe := functionExpression{}
-	if isMember {
-		if !test(tPAREN_LEFT) {
-			return fe, false
-		}
-
-		fe.isMember = true
-	} else {
-		if !accept(tFUNCTION) {
-			return fe, false
-		}
-
-		if accept(tNAME) {
-			fe.name = atom{getToken()}
-		}
-	}
-
-	fe.args, _ = parseFunctionArgs()
-	fe.body, _ = parseBlockStatement()
-
-	return fe, true
+func parseMemberFunction() astNode {
+	f := parseFunctionExpression()
+	f.t = g_MEMBER_FUNCTION
+	return f
 }
 
-func parseBlockStatement() (blockStatement, bool) {
-	bs := blockStatement{}
+func parseArrayLiteral() astNode {
+	values := []astNode{}
 
-	if !accept(tCURLY_LEFT) {
-		return bs, false
-	}
-
-	bs.statements = []ast{}
-
-	for !accept(tCURLY_RIGHT) {
-		bs.statements = append(bs.statements, parseStatement())
-	}
-
-	return bs, true
-}
-
-func parseArrayLiteral() (arrayLiteral, bool) {
-	al := arrayLiteral{}
-	if !accept(tBRACKET_LEFT) {
-		return al, false
-	}
-
-	al.items = []ast{}
 	for !accept(tBRACKET_RIGHT) {
-		al.items = append(al.items, parseSpread())
+		values = append(values, parseYield())
+
 		if !accept(tCOMMA) {
 			expect(tBRACKET_RIGHT)
 			break
 		}
 	}
 
-	return al, true
+	return makeNode(g_ARRAY_LITERAL, "", values...)
 }
 
-func parsePropertyName() propertyName {
-	name := propertyName{}
-	if accept(tBRACKET_LEFT) {
-		name.isCalculated = true
-		name.value = parseSequence()
-		expect(tBRACKET_RIGHT)
+func parseLambdaOrName() astNode {
+	firstParamStr := getLexeme()
+
+	if accept(tLAMBDA) {
+		var body astNode
+		if accept(tCURLY_LEFT) {
+			body = parseBlockStatement()
+		} else {
+			body = parseExpression()
+		}
+		params := makeNode(
+			g_FUNCTION_PARAMETERS, "",
+			makeNode(
+				g_FUNCTION_PARAMETER, "", makeNode(g_NAME, firstParamStr),
+			),
+		)
+		return makeNode(g_LAMBDA_EXPRESSION, "", params, body)
+	}
+
+	return makeNode(g_NAME, firstParamStr)
+}
+
+func parseBlockStatement() astNode {
+	statements := []astNode{}
+	for !accept(tCURLY_RIGHT) {
+		statements = append(statements, parseStatement())
+	}
+	return makeNode(g_BLOCK_STATEMENT, "", statements...)
+}
+
+func parseFunctionParameter() astNode {
+	if accept(tSPREAD) {
+		var left astNode
+		if accept(tCURLY_LEFT) {
+			left = parseObjectPattern()
+		} else if accept(tNAME) {
+			left = makeNode(g_NAME, getLexeme())
+		}
+		n := makeNode(g_FUNCTION_PARAMETER, "", left)
+		n.flags = f_FUNCTION_PARAM_REST
+		return n
+	}
+
+	n := parseDeclarator()
+	n.t = g_FUNCTION_PARAMETER
+	return n
+}
+
+func parseDeclarator() astNode {
+	var left astNode
+	if accept(tCURLY_LEFT) {
+		left = parseObjectPattern()
 	} else if accept(tNAME) {
-		name.value = atom{getToken()}
-	} else if isValidPropertyName(tok.lexeme) || test(tNUMBER, tSTRING) {
-		name.isNotName = true
-		next()
-		name.value = atom{getToken()}
-	}
-	return name
-}
-
-func parseForOfStatement(left ast) forOfStatement {
-	fs := forOfStatement{}
-
-	if vs, ok := left.(varDeclaration); ok {
-		if len(vs.declarations) > 1 {
-			panic(parsingError{p_WRONG_ASSIGNMENT, tok})
-		}
-	}
-
-	fs.left = left
-	fs.right = parseYield()
-	expect(tPAREN_RIGHT)
-	fs.body = parseStatement()
-
-	return fs
-}
-
-func parseForInStatement(left ast) forInStatement {
-	fs := forInStatement{}
-	if vs, ok := left.(varDeclaration); ok {
-		if len(vs.declarations) > 1 {
-			panic(parsingError{p_WRONG_ASSIGNMENT, tok})
-		}
-	}
-
-	fs.left = left
-	fs.right = parseYield()
-	expect(tPAREN_RIGHT)
-	fs.body = parseStatement()
-
-	return fs
-}
-
-// ast implementations
-
-func (ps program) String() string {
-	result := ""
-	for _, s := range ps.statements {
-		result += s.String()
-	}
-	return result
-}
-
-func (sw switchStatement) String() string {
-	result := "switch(" + sw.condition.String() + "){"
-	for _, c := range sw.cases {
-		result += "case " + c.condition.String() + ":"
-		for _, s := range c.statements {
-			result += s.String()
-		}
-	}
-	if sw.defCase != nil {
-		result += "default:"
-		for _, s := range sw.defCase {
-			result += s.String()
-		}
-	}
-	result += "}"
-
-	return result
-}
-
-func (es exportStatement) String() string {
-	result := "export "
-
-	if es.exportAll {
-		result += "*"
-	} else if len(es.vars) == 1 && es.vars[0].alias.val.lexeme == "default" {
-		result += "default "
-		if es.declaration != nil {
-			result += es.declaration.String()
-		} else {
-			result += es.vars[0].name.String()
-		}
+		left = makeNode(g_NAME, getLexeme())
 	} else {
-		if es.declaration != nil {
-			result += es.declaration.String()
-		} else {
-			result += "{"
-			for i, ev := range es.vars {
-				result += ev.name.String()
-				if ev.alias.val.lexeme != "" {
-					result += " as " + ev.alias.val.lexeme
+		return left
+		//checkASI(tSEMI)
+	}
+
+	if accept(tASSIGN) {
+		right := parseAssignment()
+		return makeNode(g_DECLARATOR, "", left, right)
+	}
+
+	return makeNode(g_DECLARATOR, "", left)
+}
+
+func parseCalculatedPropertyName() astNode {
+	value := parseExpression()
+	expect(tBRACKET_RIGHT)
+	return makeNode(g_CALCULATED_PROPERTY_NAME, "", value)
+}
+
+func parseImportStatement() astNode {
+	vars := astNode{g_IMPORT_VARS, "", []astNode{}, 0}
+	all := astNode{t: g_IMPORT_ALL}
+	path := astNode{t: g_IMPORT_PATH}
+
+	if accept(tMULT) {
+		expect(tAS)
+		expect(tNAME)
+		all.value = getLexeme()
+		expect(tFROM)
+	} else {
+		if accept(tNAME) {
+			name := makeNode(g_IMPORT_NAME, "default")
+			alias := makeNode(g_IMPORT_ALIAS, getLexeme())
+
+			varNode := makeNode(g_IMPORT_VAR, "", name, alias)
+			vars.children = append(vars.children, varNode)
+
+			if accept(tCOMMA) {
+				if accept(tMULT) {
+					expect(tAS)
+					expect(tNAME)
+					all.value = getLexeme()
+					expect(tFROM)
 				}
-				if i < len(es.vars)-1 {
+			} else {
+				expect(tFROM)
+			}
+		}
+
+		if accept(tCURLY_LEFT) {
+			for !accept(tCURLY_RIGHT) {
+				if accept(tNAME, tDEFAULT) {
+					name := makeNode(g_IMPORT_NAME, getLexeme())
+					alias := makeNode(g_IMPORT_ALIAS, getLexeme())
+
+					if accept(tAS) {
+						expect(tNAME)
+						alias = makeNode(g_IMPORT_ALIAS, getLexeme())
+					}
+
+					varNode := makeNode(g_IMPORT_VAR, "", name, alias)
+					vars.children = append(vars.children, varNode)
+				}
+
+				if !accept(tCOMMA) {
+					expect(tCURLY_RIGHT)
+					break
+				}
+			}
+
+			expect(tFROM)
+		}
+	}
+
+	expect(tSTRING)
+	path.value = getLexeme()
+	expect(tSEMI)
+
+	return makeNode(g_IMPORT_STATEMENT, "", vars, all, path)
+}
+
+func printAst(n astNode) string {
+	switch n.t {
+	case g_IMPORT_ALIAS:
+		return n.value
+
+	case g_DECLARATION_STATEMENT:
+		return printAst(n.children[0]) + ";"
+
+	case g_DECLARATION_EXPRESSION:
+		result := n.value + " "
+		for i, d := range n.children {
+			result += printAst(d) // declarator
+			if i < len(n.children)-1 {
+				result += ","
+			}
+		}
+		return result
+
+	case g_DECLARATOR:
+		result := printAst(n.children[0]) // var name
+		if len(n.children) > 1 {
+			result += "=" + printAst(n.children[1]) // var value
+		}
+		return result
+
+	case g_NAME, g_NUMBER_LITERAL, g_NULL, g_STRING_LITERAL,
+		g_BOOL_LITERAL, g_UNDEFINED:
+		return n.value
+
+	case g_FUNCTION_DECLARATION:
+		result := "function " + n.value
+		result += printAst(n.children[0]) // function params
+		result += printAst(n.children[1]) // function body
+
+		return result
+
+	case g_FUNCTION_PARAMETERS, g_FUNCTION_ARGS:
+		result := "("
+		for i, param := range n.children {
+			result += printAst(param)
+			if i < len(n.children)-1 {
+				result += ","
+			}
+		}
+		result += ")"
+
+		return result
+
+	case g_FUNCTION_PARAMETER:
+		result := ""
+		if n.flags&f_FUNCTION_PARAM_REST == 1 {
+			result += "..."
+		}
+		result += printAst(n.children[0]) // param name
+		if len(n.children) > 1 {
+			result += "=" + printAst(n.children[1]) // param default value
+		}
+
+		return result
+
+	case g_BLOCK_STATEMENT:
+		result := "{"
+		for _, st := range n.children {
+			result += printAst(st)
+		}
+		result += "}"
+
+		return result
+
+	case g_EXPRESSION_STATEMENT:
+		return printAst(n.children[0]) + ";"
+
+	case g_IF_STATEMENT:
+		result := "if("
+		result += printAst(n.children[0]) + ")" // condition
+		result += printAst(n.children[1])       // body
+		if len(n.children) > 2 {
+			result += printAst(n.children[2]) // alternate
+		}
+
+		return result
+
+	case g_EXPRESSION:
+		result := printAst(n.children[0]) // left
+		result += n.value                 // operator
+		result += printAst(n.children[1]) // right
+
+		return result
+
+	case g_OBJECT_PROPERTY:
+		result := ""
+		if n.value != "" {
+			result += n.value + " " // set or get
+		}
+		result += printAst(n.children[0]) // key
+
+		if len(n.children) > 1 {
+			value := n.children[1]
+			if value.t != g_MEMBER_FUNCTION {
+				result += ":"
+			}
+
+			result += printAst(value) // value
+		}
+		return result
+
+	case g_OBJECT_PATTERN, g_OBJECT_LITERAL:
+		result := "{"
+		for i, prop := range n.children {
+			result += printAst(prop)
+
+			if i < len(n.children)-1 {
+				result += ","
+			}
+		}
+		result += "}"
+
+		return result
+
+	case g_ASSIGNMENT_PATTERN:
+		result := printAst(n.children[0]) // left
+		result += "="
+		result += printAst(n.children[1]) // right
+
+		return result
+
+	case g_UNARY_POSTFIX_EXPRESSION:
+		result := printAst(n.children[0]) // value
+		result += n.value
+
+		return result
+
+	case g_UNARY_PREFIX_EXPRESSION:
+		result := n.value
+		result += printAst(n.children[0]) // value
+
+		return result
+
+	case g_ARRAY_LITERAL, g_ARRAY_PATTERN:
+		result := "["
+		for i, item := range n.children {
+			result += printAst(item)
+			if i < len(n.children)-1 {
+				result += ","
+			}
+		}
+		result += "]"
+
+		return result
+
+	case g_LAMBDA_EXPRESSION:
+		result := ""
+		result += printAst(n.children[0]) // params
+		result += "=>"
+		result += printAst(n.children[1]) // body
+
+		return result
+
+	case g_FUNCTION_CALL:
+		result := printAst(n.children[0]) // func name
+		if len(n.children) > 1 {
+			result += printAst(n.children[1]) // func args
+		} else {
+			result += "()"
+		}
+
+		return result
+
+	case g_MEMBER_EXPRESSION:
+		result := printAst(n.children[0]) // object
+
+		prop := n.children[1]
+		if prop.t == g_CALCULATED_PROPERTY_NAME {
+			result += printAst(prop)
+		} else {
+			result += "."
+			result += printAst(prop) // property
+		}
+
+		return result
+
+	case g_CALCULATED_PROPERTY_NAME:
+		return "[" + printAst(n.children[0]) + "]"
+
+	case g_CONSTRUCTOR_CALL:
+		result := "new " + printAst(n.children[0]) // func name
+		result += printAst(n.children[1])          // args
+
+		return result
+
+	case g_VALID_PROPERTY_NAME:
+		return n.value
+
+	case g_MEMBER_FUNCTION:
+		result := printAst(n.children[0]) // params
+		result += printAst(n.children[1]) // body
+
+		return result
+
+	case g_FUNCTION_EXPRESSION:
+		result := "function"
+		if n.value != "" {
+			result += " " + n.value
+		}
+		result += printAst(n.children[0]) // params
+		result += printAst(n.children[1]) // body
+		return result
+
+	case g_PARENS_EXPRESSION:
+		result := "(" + printAst(n.children[0]) + ")"
+		return result
+
+	case g_EMPTY_STATEMENT:
+		return ";"
+
+	case g_FOR_STATEMENT:
+		result := "for("
+		result += printAst(n.children[0]) + ";" // init
+		result += printAst(n.children[1]) + ";" // test
+		result += printAst(n.children[2]) + ")" // final
+		result += printAst(n.children[3])       // body
+
+		return result
+
+	case g_FOR_OF_STATEMENT:
+		result := "for("
+		result += printAst(n.children[0]) + " of " // init
+		result += printAst(n.children[1]) + ")"    // test
+		result += printAst(n.children[2])          // body
+
+		return result
+
+	case g_FOR_IN_STATEMENT:
+		result := "for("
+		result += printAst(n.children[0]) + " in " // init
+		result += printAst(n.children[1]) + ")"    // test
+		result += printAst(n.children[2])          // body
+
+		return result
+
+	case g_WHILE_STATEMENT:
+		result := "while("
+		result += printAst(n.children[0]) + ")" // condition
+		result += printAst(n.children[1])       // body
+
+		return result
+
+	case g_SEQUENCE_EXPRESSION:
+		result := ""
+		for i, c := range n.children {
+			result += printAst(c)
+			if i < len(n.children)-1 {
+				result += ","
+			}
+		}
+
+		return result
+
+	case g_DO_WHILE_STATEMENT:
+		result := "do "
+		result += printAst(n.children[1])                   // body
+		result += "while(" + printAst(n.children[0]) + ");" // condition
+
+		return result
+
+	case g_IMPORT_STATEMENT:
+		result := "import"
+
+		vars := n.children[0].children
+
+		alreadyPrintedVar := -1
+
+		// print default first
+		if len(vars) > 0 {
+			for i, v := range vars {
+				if v.value == "default" {
+					result += " " + v.children[0].value
+					alreadyPrintedVar = i
+					break
+				}
+			}
+		}
+
+		all := printAst(n.children[1]) // import all
+		if all != "" {
+			if result != "import" {
+				result += ","
+			}
+			result += all
+		}
+
+		if !(len(vars) == 1 && alreadyPrintedVar == 0 || len(vars) == 0) {
+			if result != "import" {
+				result += ","
+			}
+			result += "{"
+			for i := 0; i < len(vars); i++ {
+				if i != alreadyPrintedVar {
+					result += printAst(vars[i])
+					if i < len(vars)-1 {
+						result += ","
+					}
+				}
+			}
+			result += "}"
+		}
+
+		if result != "import" {
+			result += " from"
+		}
+		result += printAst(n.children[2]) // import path
+
+		result += ";"
+		return result
+
+	case g_IMPORT_NAME:
+		result := n.value
+		if len(n.children) > 0 {
+			result += " as " + n.children[0].value
+		}
+
+		return result
+
+	case g_IMPORT_PATH:
+		return n.value
+
+	case g_IMPORT_ALL:
+		if n.value != "" {
+			return "*as " + n.value
+		}
+
+	case g_BREAK_STATEMENT:
+		return "break;"
+
+	case g_CONTINUE_STATEMENT:
+		return "continue;"
+
+	case g_DEBUGGER_STATEMENT:
+		return "debugger;"
+
+	case g_EXPORT_STATEMENT:
+		result := ""
+		noDefault := true
+
+		declaration := n.children[1]
+		result += printAst(declaration)
+
+		result += "export"
+		vars := n.children[0].children
+		if len(vars) == 1 {
+			v := vars[0]
+			alias := v.children[1]
+			name := v.children[0]
+			if alias.value == "default" {
+				result += " default " + printAst(name)
+				noDefault = false
+			}
+		}
+
+		if noDefault {
+			result += "{"
+			for i, v := range vars {
+				result += printAst(v)
+				if i < len(vars)-1 {
 					result += ","
 				}
 			}
 			result += "}"
 		}
-	}
 
-	if es.source.val.lexeme != "" {
-		result += " from" + es.source.val.lexeme
-	}
+		result += printAst(n.children[2]) // export path
 
-	return result + ";"
-}
+		result += ";"
+		return result
 
-func (is importStatement) String() string {
-	result := "import"
-
-	alreadyPrintedIndex := -1
-	// print default import first
-	for i, v := range is.vars {
-		if v.name.val.lexeme == "default" {
-			result += " " + v.alias.val.lexeme
-			alreadyPrintedIndex = i
-			break
+	case g_EXPORT_PATH:
+		if n.value != "" {
+			return " from" + n.value
 		}
-	}
+		return ""
 
-	// print * import
-	if is.all.val.lexeme != "" {
-		if result != "import" {
-			result += ","
+	case g_EXPORT_VAR:
+		result := printAst(n.children[0]) // name
+		if len(n.children) > 1 {
+			result += " as " + printAst(n.children[1]) // alias
 		}
-		result += "*as " + is.all.val.lexeme
-	}
+		return result
 
-	// print all other imports
-	if len(is.vars) > 0 && !(len(is.vars) == 1 && alreadyPrintedIndex == 0) {
-		if result != "import" {
-			result += ","
-		}
+	case g_EXPORT_ALIAS:
+		return n.value
+
+	case g_EXPORT_NAME:
+		return n.value
+
+	case g_SWITCH_STATEMENT:
+		result := "switch("
+		result += printAst(n.children[0]) + ")" // test
 		result += "{"
-		for i, v := range is.vars {
-			if i != alreadyPrintedIndex {
-				result += v.name.String()
-				if v.alias.String() != "" {
-					result += " as " + v.alias.String()
-				}
-				if i < len(is.vars)-1 {
-					result += ","
-				}
-			}
+		for _, c := range n.children[1].children {
+			result += printAst(c)
+		}
+
+		if len(n.children) > 2 {
+			result += printAst(n.children[2]) // default
 		}
 		result += "}"
-	} else {
-		result += " "
-	}
-	if result != "import " {
-		result += "from"
-	}
 
-	result += is.path.String() + ";"
-	return result
-}
+		return result
 
-func (re returnStatement) String() string {
-	result := "return"
-	if re.value != nil {
-		result += " " + re.value.String()
-	}
-	result += ";"
-	return result
-}
-
-func (fs functionStatement) String() string {
-	return fs.funcExpr.String()
-}
-
-func (es expressionStatement) String() string {
-	if es.expr != nil {
-		return es.expr.String() + ";"
-	}
-	return ";"
-}
-
-func (is ifStatement) String() string {
-	result := "if(" + is.test.String() + ")" + is.consequent.String()
-	if is.alternate != nil {
-		result += " else " + is.alternate.String()
-	}
-	return result
-}
-
-func (ws whileStatement) String() string {
-	result := "while(" + ws.test.String() + ")" + ws.body.String()
-	return result
-}
-
-func (ds doWhileStatement) String() string {
-	result := "do " + ds.body.String() + "while" + "(" + ds.test.String() + ")" + ";"
-	return result
-}
-
-func (es emptyStatement) String() string {
-	return ";"
-}
-
-func (fs forStatement) String() string {
-	result := "for(" + fs.init.String() + ";"
-	result += fs.test.String() + ";"
-	result += fs.final.String() + ")"
-	result += fs.body.String()
-	return result
-}
-
-func (op objectPattern) String() string {
-	return objectLiteral.String(objectLiteral(op))
-}
-
-func (d declarator) String() string {
-	result := ""
-	if d.left != nil {
-		result += d.left.String()
-	}
-	if d.value != nil {
-		result += "=" + d.value.String()
-	}
-	return result
-}
-
-func (vd varDeclaration) String() string {
-	result := vd.keyword.String() + " "
-	for i, d := range vd.declarations {
-		result += d.String()
-
-		if i < len(vd.declarations)-1 {
-			result += ","
+	case g_SWITCH_DEFAULT:
+		result := "default:"
+		for _, st := range n.children {
+			result += printAst(st)
 		}
-	}
-	return result
-}
+		return result
 
-func (se sequenceExpression) String() string {
-	result := ""
-	for i, item := range se.items {
-		result += item.String()
-		if i < len(se.items)-1 {
-			result += ","
+	case g_SWITCH_CASE:
+		result := "case "
+		result += printAst(n.children[0]) + ":" // test
+		for _, st := range n.children[1].children {
+			result += printAst(st)
 		}
-	}
-	return result
-}
+		return result
 
-func (ye yieldExpression) String() string {
-	return "yield " + ye.value.String()
-}
+	case g_SWITCH_CASE_TEST:
+		result := printAst(n.children[0])
+		return result
 
-func (be binaryExpression) String() string {
-	result := ""
-	op := operatorTable[be.operator.val.tType]
-	switch t := be.left.(type) {
-	case binaryExpression:
-		leftPrec := operatorTable[t.operator.val.tType].precedence
-		if leftPrec < op.precedence || (leftPrec == op.precedence && op.isRightAssociative) {
-			result += "(" + t.String() + ")"
-		} else {
-			result += t.String()
+	case g_PROGRAM_STATEMENT:
+		result := ""
+		for _, st := range n.children {
+			result += printAst(st)
 		}
-	default:
-		result += t.String()
+		return result
 	}
 
-	result += be.operator.String()
-
-	switch t := be.right.(type) {
-	case binaryExpression:
-		rightPrec := operatorTable[t.operator.val.tType].precedence
-		if (!op.isRightAssociative && rightPrec == op.precedence) || op.precedence > rightPrec {
-			result += "(" + t.String() + ")"
-		} else {
-			result += t.String()
-		}
-	default:
-		result += t.String()
-	}
-	return result
-}
-
-func (ce conditionalExpression) String() string {
-	result := fmt.Sprintf(
-		"%s?%s:%s", ce.test.String(), ce.consequent.String(), ce.alternate.String(),
-	)
-	return result
-}
-
-func (ue unaryExpression) String() string {
-	result := ""
-	if !ue.isPostfix {
-		result += ue.operator.String()
-	}
-	if _, ok := ue.value.(atom); ok {
-		result += ue.value.String()
-	} else {
-		result += "(" + ue.value.String() + ")"
-	}
-	if ue.isPostfix {
-		result += ue.operator.String()
-	}
-	return result
-}
-
-func (fc functionCall) String() string {
-	result := ""
-	if fc.isConstructor {
-		result += "new "
-	}
-	result += fc.name.String() + "("
-	for i, arg := range fc.args {
-		result += arg.String()
-		if i < len(fc.args)-1 {
-			result += ","
-		}
-	}
-	result += ")"
-	return result + ""
-}
-
-func (me memberExpression) String() string {
-	result := me.object.String()
-	if !me.property.isCalculated && !me.property.isNotName {
-		result += "."
-	}
-	result += me.property.String()
-	return result
-}
-
-func (av atom) String() string {
-	return av.val.lexeme
-}
-
-func (le lambdaExpression) String() string {
-	result := "("
-	for i, arg := range le.args {
-		result += arg.String()
-		if i < len(le.args)-1 {
-			result += ","
-		}
-	}
-	result += ")=>"
-	result += le.body.String()
-	return result
-}
-
-func (pe parenExpression) String() string {
-	return "(" + pe.inner.String() + ")"
-}
-
-func (ol objectLiteral) String() string {
-	result := "{"
-	for i, prop := range ol.properties {
-		if prop.isGetter {
-			result += "get "
-		} else if prop.isSetter {
-			result += "set "
-		}
-
-		result += prop.key.String()
-
-		fe, valueIsFunction := prop.value.(functionExpression)
-		if prop.value != nil && (!valueIsFunction || !fe.isMember) {
-			result += ":"
-		}
-		if prop.value != nil {
-			result += prop.value.String()
-		}
-		if i < len(ol.properties)-1 {
-			result += ","
-		}
-	}
-	result += "}"
-	return result
-}
-
-func (fe functionExpression) String() string {
-	result := ""
-	if !fe.isMember {
-		result += "function"
-	}
-	if fe.name.val.lexeme != "" {
-		result += " " + fe.name.String()
-	}
-
-	result += "("
-	for i, arg := range fe.args {
-		result += arg.String()
-		if i < len(fe.args)-1 {
-			result += ","
-		}
-	}
-	result += ")"
-	result += fe.body.String()
-	return result
-}
-
-func (bs blockStatement) String() string {
-	result := "{"
-	for _, st := range bs.statements {
-		result += st.String()
-	}
-	result += "}"
-	return result
-}
-
-func (al arrayLiteral) String() string {
-	result := "["
-	for i, item := range al.items {
-		result += item.String()
-		if i < len(al.items)-1 {
-			result += ","
-		}
-	}
-	result += "]"
-	return result
-}
-
-func (pn propertyName) String() string {
-	if pn.isCalculated || pn.isNotName {
-		return "[" + pn.value.String() + "]"
-	}
-	return pn.value.String()
-}
-
-func (fs forOfStatement) String() string {
-	result := "for(" + fs.left.String()
-	result += " of " + fs.right.String() + ")"
-	result += fs.body.String()
-	return result
-}
-
-func (fs forInStatement) String() string {
-	result := "for(" + fs.left.String()
-	result += " in " + fs.right.String() + ")"
-	result += fs.body.String()
-	return result
-}
-
-func (ap arrayPattern) String() string {
-	result := "["
-	for i, prop := range ap.properties {
-		result += prop.String()
-		if i < len(ap.properties)-1 {
-			result += ","
-		}
-	}
-	result += "]"
-	return result
-}
-
-func (se spreadExpression) String() string {
-	return "..." + se.value.String()
-}
-
-func (re restExpression) String() string {
-	return "..." + re.value.String()
+	return ""
 }

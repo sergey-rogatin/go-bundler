@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+// "strings"
+
 type LoaderError struct {
 	err      error
 	fileName string
@@ -27,105 +29,105 @@ func LoadFile(src []byte, filePath string) ([]byte, []string, error) {
 	}
 
 	resultProgram, fileImports := transformIntoModule(initialProgram, filePath)
-	resultBytes := []byte(resultProgram.String())
+	resultBytes := []byte(printAst(resultProgram))
 	return resultBytes, fileImports, nil
+}
+
+func transformIntoModule(src astNode, fileName string) (astNode, []string) {
+	res := modifyAst(src, fileName)
+
+	return res, nil
+}
+
+func modifyAst(n astNode, fileName string) astNode {
+	switch n.t {
+	case g_PROGRAM_STATEMENT:
+		return modifyProgram(n, fileName)
+
+	case g_IMPORT_STATEMENT:
+		return modifyImport(n, fileName)
+
+	default:
+		res := n
+		res.children = []astNode{}
+		for _, c := range n.children {
+			res.children = append(res.children, modifyAst(c, fileName))
+		}
+		return res
+	}
+}
+
+func modifyProgram(n astNode, fileName string) astNode {
+	statements := []astNode{}
+	for _, st := range n.children {
+		statements = append(statements, modifyAst(st, fileName))
+	}
+
+	params := makeNode(g_FUNCTION_PARAMETERS, "")
+	blockSt := makeNode(g_BLOCK_STATEMENT, "", statements...)
+	funcExpr := makeNode(g_FUNCTION_EXPRESSION, "", params, blockSt)
+	funcCall := makeNode(g_FUNCTION_CALL, "", funcExpr)
+
+	objectName := CreateVarNameFromPath(fileName)
+	object := makeNode(g_NAME, objectName)
+
+	decl := makeNode(g_DECLARATOR, "", object, funcCall)
+
+	declExpr := makeNode(g_DECLARATION_EXPRESSION, "var", decl)
+	declSt := makeNode(g_DECLARATION_STATEMENT, "", declExpr)
+
+	return declSt
+}
+
+func modifyImport(n astNode, fileName string) astNode {
+	vars := n.children[0].children
+	importAll := n.children[1].value
+	importPath := n.children[2].value
+
+	resolvedPath := resolveES6ImportPath(importPath, fileName)
+	ext := filepath.Ext(resolvedPath)
+
+	objectName := CreateVarNameFromPath(resolvedPath)
+	object := makeNode(g_NAME, objectName)
+
+	declarators := []astNode{}
+
+	if importAll != "" {
+		alias := makeNode(g_NAME, importAll)
+		d := makeNode(g_DECLARATOR, "", alias, object)
+		declarators = append(declarators, d)
+	}
+
+	for _, v := range vars {
+		alias := v.children[1]
+
+		var d astNode
+
+		if ext == ".js" {
+			property := v.children[0]
+			member := makeNode(g_MEMBER_EXPRESSION, "", object, property)
+
+			d = makeNode(g_DECLARATOR, "", alias, member)
+		} else {
+			filePath := "'" + objectName + ext + "'"
+			fileURL := makeNode(g_STRING_LITERAL, filePath)
+
+			d = makeNode(g_DECLARATOR, "", alias, fileURL)
+		}
+
+		declarators = append(declarators, d)
+	}
+
+	declExpr := makeNode(g_DECLARATION_EXPRESSION, "var", declarators...)
+	declSt := makeNode(g_DECLARATION_STATEMENT, "", declExpr)
+
+	return declSt
 }
 
 func CreateVarNameFromPath(path string) string {
 	newName := strings.Replace(path, "/", "_", -1)
 	newName = strings.Replace(newName, ".", "_", -1)
 	return newName
-}
-
-func transformIntoModule(programAst program, fileName string) (program, []string) {
-	result := program{}
-	result.statements = []ast{}
-	fileImports := []string{}
-
-	expObj := CreateVarNameFromPath(fileName)
-
-	bs := blockStatement{}
-	bs.statements = []ast{}
-
-	returnExport := objectLiteral{}
-	returnExport.properties = []objectProperty{}
-
-	for _, item := range programAst.statements {
-		switch st := item.(type) {
-
-		case exportStatement:
-			for _, v := range st.vars {
-				prop := objectProperty{}
-
-				if v.name != nil {
-					prop.value = v.name
-				}
-				prop.key.value = v.alias
-				returnExport.properties = append(returnExport.properties, prop)
-			}
-
-		case importStatement:
-			resolvedPath := resolveES6ImportPath(st.path.val.lexeme, fileName)
-			exportObjName := CreateVarNameFromPath(resolvedPath)
-
-			fileImports = append(fileImports, resolvedPath)
-			ext := filepath.Ext(resolvedPath)
-
-			if len(st.vars) > 0 {
-				vd := varDeclaration{}
-				vd.keyword = atom{makeToken("var")}
-				vd.declarations = []declarator{}
-
-				for _, impVar := range st.vars {
-					decl := declarator{}
-					decl.left = impVar.alias
-
-					if ext == ".js" {
-						me := memberExpression{}
-						me.object = atom{makeToken(exportObjName)}
-						me.property.value = impVar.name
-
-						decl.value = me
-					} else {
-						decl.value = atom{makeToken("\"" + exportObjName + ext + "\"")}
-					}
-					vd.declarations = append(vd.declarations, decl)
-				}
-
-				declStatement := expressionStatement{}
-				declStatement.expr = vd
-				bs.statements = append(bs.statements, declStatement)
-			}
-
-		default:
-			bs.statements = append(bs.statements, st)
-		}
-	}
-
-	rs := returnStatement{}
-	rs.value = returnExport
-
-	bs.statements = append(bs.statements, rs)
-
-	fe := functionExpression{}
-	fe.body = bs
-
-	fc := functionCall{}
-	fc.name = fe
-
-	decl := declarator{}
-	decl.left = atom{makeToken(expObj)}
-	decl.value = fc
-
-	vd := varDeclaration{}
-	vd.declarations = []declarator{decl}
-	vd.keyword = atom{makeToken("var")}
-
-	es := expressionStatement{}
-	es.expr = vd
-	result.statements = append(result.statements, es)
-
-	return result, fileImports
 }
 
 func makeToken(text string) token {
@@ -139,6 +141,14 @@ func resolveES6ImportPath(importPath, currentFileName string) string {
 
 	locationParts := strings.Split(currentFileName, "/")
 	locationParts = locationParts[:len(locationParts)-1]
+
+	// import from node_modules
+	if len(pathParts) > 0 {
+		if pathParts[0] != "." && pathParts[0] != ".." {
+			locationParts = []string{"node_modules"}
+			pathParts = append(pathParts, "index.js")
+		}
+	}
 
 	for _, part := range pathParts {
 		if part == ".." {

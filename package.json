@@ -15,11 +15,20 @@
     "type": "git",
     "url": "git+https://github.com/lvl5hm/go-bundler.git"
   },
-  "keywords": ["golang", "go", "bundler", "bundle", "js"],
+  "keywords": [
+    "golang",
+    "go",
+    "bundler",
+    "bundle",
+    "js"
+  ],
   "author": "lvl5hm",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/lvl5hm/goBundler/issues"
   },
-  "homepage": "https://github.com/lvl5hm/goBundler#readme"
+  "homepage": "https://github.com/lvl5hm/goBundler#readme",
+  "dependencies": {
+    "react": "^16.2.0"
+  }
 }
