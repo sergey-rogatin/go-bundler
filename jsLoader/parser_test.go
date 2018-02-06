@@ -387,7 +387,7 @@ func TestImportStatement(t *testing.T) {
 		},
 		{
 			"import foo, {default as foo, bar, baz} from 'foo';",
-			"import foo,{default as foo,bar,baz} from'foo';",
+			"import foo,{default as foo,bar as bar,baz as baz} from'foo';",
 		},
 	}
 

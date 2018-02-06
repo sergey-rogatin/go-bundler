@@ -1310,8 +1310,11 @@ func printAst(n astNode) string {
 		// print default first
 		if len(vars) > 0 {
 			for i, v := range vars {
-				if v.value == "default" {
-					result += " " + v.children[0].value
+				name := v.children[0]
+				alias := v.children[1]
+
+				if name.value == "default" {
+					result += " " + alias.value
 					alreadyPrintedVar = i
 					break
 				}
@@ -1350,10 +1353,12 @@ func printAst(n astNode) string {
 		result += ";"
 		return result
 
-	case g_IMPORT_NAME:
-		result := n.value
-		if len(n.children) > 0 {
-			result += " as " + n.children[0].value
+	case g_IMPORT_VAR:
+		name := n.children[0]
+
+		result := name.value
+		if len(n.children) > 1 {
+			result += " as " + n.children[1].value
 		}
 
 		return result
