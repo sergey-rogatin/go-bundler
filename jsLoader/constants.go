@@ -343,6 +343,7 @@ func (t tokenType) String() string {
 type grammarType int
 
 var grammarTypeToString = []string{
+	"g_INVALID_GRAMMAR",
 	"g_PROGRAM_STATEMENT",
 	"g_RETURN_STATEMENT",
 	"g_EXPRESSION_STATEMENT",
@@ -420,7 +421,8 @@ func (g grammarType) String() string {
 }
 
 const (
-	g_PROGRAM_STATEMENT grammarType = iota
+	g_INVALID_GRAMMAR grammarType = iota
+	g_PROGRAM_STATEMENT
 	g_RETURN_STATEMENT
 	g_EXPRESSION_STATEMENT
 	g_BLOCK_STATEMENT

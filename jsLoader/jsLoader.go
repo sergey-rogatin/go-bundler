@@ -34,94 +34,141 @@ func LoadFile(src []byte, filePath string) ([]byte, []string, error) {
 }
 
 func transformIntoModule(src astNode, fileName string) (astNode, []string) {
-	res := modifyAst(src, fileName)
+	fileImports := []string{}
 
-	return res, nil
-}
+	var modifyAst,
+		modifyProgram,
+		modifyImport,
+		modifyExport func(astNode) astNode
 
-func modifyAst(n astNode, fileName string) astNode {
-	switch n.t {
-	case g_PROGRAM_STATEMENT:
-		return modifyProgram(n, fileName)
+	modifyAst = func(n astNode) astNode {
+		switch n.t {
 
-	case g_IMPORT_STATEMENT:
-		return modifyImport(n, fileName)
+		case g_EXPORT_STATEMENT:
+			return modifyExport(n)
 
-	default:
-		res := n
-		res.children = []astNode{}
-		for _, c := range n.children {
-			res.children = append(res.children, modifyAst(c, fileName))
+		case g_PROGRAM_STATEMENT:
+			return modifyProgram(n)
+
+		case g_IMPORT_STATEMENT:
+			return modifyImport(n)
+
+		default:
+			res := n
+			res.children = []astNode{}
+			for _, c := range n.children {
+				res.children = append(res.children, modifyAst(c))
+			}
+			return res
 		}
-		return res
-	}
-}
-
-func modifyProgram(n astNode, fileName string) astNode {
-	statements := []astNode{}
-	for _, st := range n.children {
-		statements = append(statements, modifyAst(st, fileName))
 	}
 
-	params := makeNode(g_FUNCTION_PARAMETERS, "")
-	blockSt := makeNode(g_BLOCK_STATEMENT, "", statements...)
-	funcExpr := makeNode(g_FUNCTION_EXPRESSION, "", params, blockSt)
-	funcCall := makeNode(g_FUNCTION_CALL, "", funcExpr)
+	modifyProgram = func(n astNode) astNode {
+		statements := []astNode{}
 
-	objectName := CreateVarNameFromPath(fileName)
-	object := makeNode(g_NAME, objectName)
+		// add var exports = {}
+		exportsObj := makeNode(g_NAME, "exports")
+		right := makeNode(g_OBJECT_LITERAL, "")
+		decl := makeNode(g_DECLARATOR, "", exportsObj, right)
+		declExpr := makeNode(g_DECLARATION_EXPRESSION, "var", decl)
+		declSt := makeNode(g_DECLARATION_STATEMENT, "", declExpr)
+		statements = append(statements, declSt)
 
-	decl := makeNode(g_DECLARATOR, "", object, funcCall)
-
-	declExpr := makeNode(g_DECLARATION_EXPRESSION, "var", decl)
-	declSt := makeNode(g_DECLARATION_STATEMENT, "", declExpr)
-
-	return declSt
-}
-
-func modifyImport(n astNode, fileName string) astNode {
-	vars := n.children[0].children
-	importAll := n.children[1].value
-	importPath := n.children[2].value
-
-	resolvedPath := resolveES6ImportPath(importPath, fileName)
-	ext := filepath.Ext(resolvedPath)
-
-	objectName := CreateVarNameFromPath(resolvedPath)
-	object := makeNode(g_NAME, objectName)
-
-	declarators := []astNode{}
-
-	if importAll != "" {
-		alias := makeNode(g_NAME, importAll)
-		d := makeNode(g_DECLARATOR, "", alias, object)
-		declarators = append(declarators, d)
-	}
-
-	for _, v := range vars {
-		alias := v.children[1]
-
-		var d astNode
-
-		if ext == ".js" {
-			property := v.children[0]
-			member := makeNode(g_MEMBER_EXPRESSION, "", object, property)
-
-			d = makeNode(g_DECLARATOR, "", alias, member)
-		} else {
-			filePath := "'" + objectName + ext + "'"
-			fileURL := makeNode(g_STRING_LITERAL, filePath)
-
-			d = makeNode(g_DECLARATOR, "", alias, fileURL)
+		// add all other statements
+		for _, st := range n.children {
+			statements = append(statements, modifyAst(st))
 		}
 
-		declarators = append(declarators, d)
+		// add return exports
+		ret := makeNode(g_RETURN_STATEMENT, "", exportsObj)
+		statements = append(statements, ret)
+
+		params := makeNode(g_FUNCTION_PARAMETERS, "")
+		blockSt := makeNode(g_BLOCK_STATEMENT, "", statements...)
+		funcExpr := makeNode(g_FUNCTION_EXPRESSION, "", params, blockSt)
+		funcCall := makeNode(g_FUNCTION_CALL, "", funcExpr)
+
+		objectName := CreateVarNameFromPath(fileName)
+		object := makeNode(g_NAME, objectName)
+
+		decl = makeNode(g_DECLARATOR, "", object, funcCall)
+
+		declExpr = makeNode(g_DECLARATION_EXPRESSION, "var", decl)
+		declSt = makeNode(g_DECLARATION_STATEMENT, "", declExpr)
+
+		return declSt
 	}
 
-	declExpr := makeNode(g_DECLARATION_EXPRESSION, "var", declarators...)
-	declSt := makeNode(g_DECLARATION_STATEMENT, "", declExpr)
+	modifyImport = func(n astNode) astNode {
+		vars := n.children[0].children
+		importAll := n.children[1].value
+		importPath := n.children[2].value
 
-	return declSt
+		resolvedPath := resolveES6ImportPath(importPath, fileName)
+		fileImports = append(fileImports, resolvedPath)
+
+		ext := filepath.Ext(resolvedPath)
+
+		objectName := CreateVarNameFromPath(resolvedPath)
+		object := makeNode(g_NAME, objectName)
+
+		declarators := []astNode{}
+
+		if importAll != "" {
+			alias := makeNode(g_NAME, importAll)
+			d := makeNode(g_DECLARATOR, "", alias, object)
+			declarators = append(declarators, d)
+		}
+
+		for _, v := range vars {
+			alias := v.children[1]
+
+			var d astNode
+
+			if ext == ".js" {
+				property := v.children[0]
+				member := makeNode(g_MEMBER_EXPRESSION, "", object, property)
+
+				d = makeNode(g_DECLARATOR, "", alias, member)
+			} else {
+				filePath := "'" + objectName + ext + "'"
+				fileURL := makeNode(g_STRING_LITERAL, filePath)
+
+				d = makeNode(g_DECLARATOR, "", alias, fileURL)
+			}
+
+			declarators = append(declarators, d)
+		}
+
+		declExpr := makeNode(g_DECLARATION_EXPRESSION, "var", declarators...)
+		declSt := makeNode(g_DECLARATION_STATEMENT, "", declExpr)
+
+		return declSt
+	}
+
+	modifyExport = func(n astNode) astNode {
+		vars := n.children[0].children
+		object := makeNode(g_NAME, "exports")
+
+		declarators := []astNode{}
+		for _, v := range vars {
+			property := v.children[1]
+			left := makeNode(g_MEMBER_EXPRESSION, "", object, property)
+
+			right := v.children[0]
+			d := makeNode(g_DECLARATOR, "", left, right)
+			declarators = append(declarators, d)
+		}
+
+		declExpr := makeNode(g_DECLARATION_EXPRESSION, "", declarators...)
+		declSt := makeNode(g_DECLARATION_STATEMENT, "", declExpr)
+
+		return declSt
+	}
+
+	res := modifyAst(src)
+
+	return res, fileImports
 }
 
 func CreateVarNameFromPath(path string) string {

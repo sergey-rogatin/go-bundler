@@ -908,7 +908,7 @@ func parseLambdaOrName() astNode {
 		if accept(tCURLY_LEFT) {
 			body = parseBlockStatement()
 		} else {
-			body = parseExpression()
+			body = parseYield()
 		}
 		params := makeNode(
 			g_FUNCTION_PARAMETERS, "",
@@ -1061,7 +1061,7 @@ func printAst(n astNode) string {
 		return result
 
 	case g_NAME, g_NUMBER_LITERAL, g_NULL, g_STRING_LITERAL,
-		g_BOOL_LITERAL, g_UNDEFINED:
+		g_BOOL_LITERAL, g_UNDEFINED, g_THIS:
 		return n.value
 
 	case g_FUNCTION_DECLARATION:
@@ -1112,7 +1112,7 @@ func printAst(n astNode) string {
 		result += printAst(n.children[0]) + ")" // condition
 		result += printAst(n.children[1])       // body
 		if len(n.children) > 2 {
-			result += printAst(n.children[2]) // alternate
+			result += " else " + printAst(n.children[2]) // alternate
 		}
 
 		return result
@@ -1469,6 +1469,9 @@ func printAst(n astNode) string {
 			result += printAst(st)
 		}
 		return result
+
+	case g_RETURN_STATEMENT:
+		return "return " + printAst(n.children[0]) + ";"
 	}
 
 	return ""
