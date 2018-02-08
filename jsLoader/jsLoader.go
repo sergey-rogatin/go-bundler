@@ -140,30 +140,70 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 			declarators = append(declarators, d)
 		}
 
-		declExpr := makeNode(g_DECLARATION_EXPRESSION, "var", declarators...)
-		declSt := makeNode(g_DECLARATION_STATEMENT, "", declExpr)
+		if len(declarators) > 0 {
+			declExpr := makeNode(
+				g_DECLARATION_EXPRESSION, "var", declarators...,
+			)
+			declSt := makeNode(g_DECLARATION_STATEMENT, "", declExpr)
 
-		return declSt
+			return declSt
+		}
+
+		return makeNode(g_EMPTY_EXPRESSION, "")
 	}
 
 	modifyExport = func(n astNode) astNode {
 		vars := n.children[0].children
-		object := makeNode(g_NAME, "exports")
+		exportsObj := makeNode(g_NAME, "exports")
 
-		declarators := []astNode{}
-		for _, v := range vars {
-			property := v.children[1]
-			left := makeNode(g_MEMBER_EXPRESSION, "", object, property)
-
-			right := v.children[0]
-			d := makeNode(g_DECLARATOR, "", left, right)
-			declarators = append(declarators, d)
+		var importObj astNode
+		pathNode := n.children[2]
+		if pathNode.value != "" {
+			resolvedPath := resolveES6ImportPath(pathNode.value, fileName)
+			objectName := CreateVarNameFromPath(resolvedPath)
+			importObj = makeNode(g_NAME, objectName)
 		}
 
-		declExpr := makeNode(g_DECLARATION_EXPRESSION, "", declarators...)
-		declSt := makeNode(g_DECLARATION_STATEMENT, "", declExpr)
+		if !(n.flags&f_EXPORT_ALL != 0) {
+			assignments := []astNode{}
+			for _, v := range vars {
+				exportedName := v.children[1]
+				left := makeNode(g_MEMBER_EXPRESSION, "", exportsObj, exportedName)
+				var right astNode
 
-		return declSt
+				if pathNode.value != "" {
+					property := v.children[0]
+					right = makeNode(g_MEMBER_EXPRESSION, "", importObj, property)
+				} else {
+					right = v.children[0]
+				}
+
+				d := makeNode(g_EXPRESSION, "=", left, right)
+				assignments = append(assignments, d)
+			}
+			seqExpr := makeNode(g_SEQUENCE_EXPRESSION, "=", assignments...)
+			exprSt := makeNode(g_EXPRESSION_STATEMENT, "", seqExpr)
+
+			decl := n.children[1]
+
+			multiSt := makeNode(g_MULTISTATEMENT, "", decl, exprSt)
+
+			return multiSt
+		}
+
+		obj := makeNode(g_NAME, "Object")
+		assign := makeNode(g_NAME, "assign")
+		funcName := makeNode(g_MEMBER_EXPRESSION, "", obj, assign)
+
+		args := []astNode{
+			exportsObj,
+			importObj,
+		}
+		argsNode := makeNode(g_FUNCTION_ARGS, "", args...)
+		objectAssignCall := makeNode(g_FUNCTION_CALL, "", funcName, argsNode)
+
+		exprSt := makeNode(g_EXPRESSION_STATEMENT, "", objectAssignCall)
+		return exprSt
 	}
 
 	res := modifyAst(src)

@@ -34,9 +34,9 @@ func TestLambda(t *testing.T) {
 		setParser(c.src)
 		le := parseExpression()
 
-		// t.Errorf("%v", le)
 		res := printAst(le)
 		if res != c.exp {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
 		}
 	}
@@ -61,9 +61,9 @@ func TestMemberExpression(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement()
 
-		// t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
 		}
 	}
@@ -108,9 +108,9 @@ func TestObjectLiteral(t *testing.T) {
 		setParser(c.src)
 		le := parseExpression()
 
-		//t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
 		}
 	}
@@ -139,9 +139,9 @@ func TestFunctionExpression(t *testing.T) {
 		setParser(c.src)
 		le := parseExpression()
 
-		//t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
 		}
 	}
@@ -162,9 +162,9 @@ func TestArrayLiteral(t *testing.T) {
 		setParser(c.src)
 		le := parseExpression()
 
-		//t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
 		}
 	}
@@ -185,9 +185,9 @@ func TestBlockStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement()
 
-		//t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
 		}
 	}
@@ -240,9 +240,9 @@ func TestForStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement()
 
-		//t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
 		}
 	}
@@ -271,9 +271,9 @@ func TestWhileStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement()
 
-		//t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
 		}
 	}
@@ -302,9 +302,9 @@ func TestDoWhileStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement()
 
-		//t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
 		}
 	}
@@ -333,9 +333,9 @@ func TestIfStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement()
 
-		//t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
 		}
 	}
@@ -356,9 +356,9 @@ func TestFunctionStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement()
 
-		//t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
 		}
 	}
@@ -395,9 +395,9 @@ func TestImportStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement()
 
-		// t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
 		}
 	}
@@ -430,9 +430,9 @@ func TestExpressionStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement()
 
-		// t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
 		}
 	}
@@ -489,9 +489,9 @@ func TestExportStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement()
 
-		// t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
 		}
 	}
@@ -532,9 +532,9 @@ func TestObjectDestructuring(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement()
 
-		// t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
 		}
 	}
@@ -559,9 +559,9 @@ func TestSwitchStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement()
 
-		//t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
 		}
 	}
@@ -607,10 +607,118 @@ func TestNewlineAndSemi(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement()
 
-		//t.Errorf("%v", le)
 		act := printAst(le)
 		if act != c.res {
+			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+		}
+	}
+}
+
+func TestImportTransform(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			"import foo from './bar';",
+			"var foo=bar_js.default;",
+		},
+		{
+			"import foo, {bar as baz, default as fooz} from './bar'",
+			"var foo=bar_js.default,baz=bar_js.bar,fooz=bar_js.default;",
+		},
+		{
+			"import './foo';",
+			"",
+		},
+		{
+			"import a, * as b from './foo';",
+			"var b=foo_js,a=foo_js.default;",
+		},
+		{
+			"import * as b from './foo';",
+			"var b=foo_js;",
+		},
+		{
+			"import {} from './foo';",
+			"",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		ast, _ := parseTokens(sourceTokens)
+		transAst, _ := transformIntoModule(ast, "a.js")
+
+		str := printAst(transAst)
+		cutStr := str[35 : len(str)-19]
+
+		if cutStr != c.res {
+			t.Errorf("%v", ast)
+			t.Errorf("Expected %s, got %s", c.res, cutStr)
+		}
+	}
+}
+
+func TestExportTransform(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			"export default foo;",
+			"exports.default=foo;",
+		},
+		{
+			"export default function foo(){};",
+			"function foo(){}exports.default=foo;",
+		},
+		{
+			"export default function foo(){};",
+			"function foo(){}exports.default=foo;",
+		},
+		{
+			"export default function(){};",
+			"exports.default=function(){};",
+		},
+		{
+			"export var foo=3, bar;",
+			"var foo=3,bar;exports.foo=foo,exports.bar=bar;",
+		},
+		{
+			"export {a,b as default};",
+			"exports.a=a,exports.default=b;",
+		},
+		{
+			"export function foo() {}",
+			"function foo(){}exports.foo=foo;",
+		},
+		{
+			"export {foo as bar};",
+			"exports.bar=foo;",
+		},
+		{
+			"export {foo as bar,a} from './bar';",
+			"exports.bar=bar_js.foo,exports.a=bar_js.a;",
+		},
+		{
+			"export * from './bar';",
+			"Object.assign(exports,bar_js);",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		ast, _ := parseTokens(sourceTokens)
+		transAst, _ := transformIntoModule(ast, "a.js")
+
+		str := printAst(transAst)
+		cutStr := str[35 : len(str)-19]
+
+		if cutStr != c.res {
+			t.Errorf("%v", ast)
+			t.Errorf("Expected %s, got %s", c.res, cutStr)
 		}
 	}
 }

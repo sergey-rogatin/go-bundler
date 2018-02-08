@@ -414,6 +414,7 @@ var grammarTypeToString = []string{
 	"g_BREAK_STATEMENT",
 	"g_CONTINUE_STATEMENT",
 	"g_DEBUGGER_STATEMENT",
+	"g_MULTISTATEMENT",
 }
 
 func (g grammarType) String() string {
@@ -492,4 +493,48 @@ const (
 	g_BREAK_STATEMENT
 	g_CONTINUE_STATEMENT
 	g_DEBUGGER_STATEMENT
+	g_MULTISTATEMENT
 )
+
+type operatorInfo struct {
+	precedence         int
+	isRightAssociative bool
+}
+
+var operatorTable = map[tokenType]operatorInfo{
+	tASSIGN:                          operatorInfo{3, true},
+	tPLUS_ASSIGN:                     operatorInfo{3, true},
+	tMINUS_ASSIGN:                    operatorInfo{3, true},
+	tMULT_ASSIGN:                     operatorInfo{3, true},
+	tDIV_ASSIGN:                      operatorInfo{3, true},
+	tMOD_ASSIGN:                      operatorInfo{3, true},
+	tBITWISE_SHIFT_LEFT_ASSIGN:       operatorInfo{3, true},
+	tBITWISE_SHIFT_RIGHT_ASSIGN:      operatorInfo{3, true},
+	tBITWISE_SHIFT_RIGHT_ZERO_ASSIGN: operatorInfo{3, true},
+	tBITWISE_AND_ASSIGN:              operatorInfo{3, true},
+	tBITWISE_OR_ASSIGN:               operatorInfo{3, true},
+	tBITWISE_XOR_ASSIGN:              operatorInfo{3, true},
+	tOR:                              operatorInfo{5, false},
+	tAND:                             operatorInfo{6, false},
+	tBITWISE_OR:                      operatorInfo{7, false},
+	tBITWISE_XOR:                     operatorInfo{8, false},
+	tBITWISE_AND:                     operatorInfo{9, false},
+	tEQUALS:                          operatorInfo{10, false},
+	tNOT_EQUALS:                      operatorInfo{10, false},
+	tEQUALS_STRICT:                   operatorInfo{10, false},
+	tNOT_EQUALS_STRICT:               operatorInfo{10, false},
+	tLESS:                            operatorInfo{11, false},
+	tLESS_EQUALS:                     operatorInfo{11, false},
+	tGREATER:                         operatorInfo{11, false},
+	tGREATER_EQUALS:                  operatorInfo{11, false},
+	tINSTANCEOF:                      operatorInfo{11, false},
+	tBITWISE_SHIFT_LEFT:              operatorInfo{12, false},
+	tBITWISE_SHIFT_RIGHT:             operatorInfo{12, false},
+	tBITWISE_SHIFT_RIGHT_ZERO:        operatorInfo{12, false},
+	tPLUS:  operatorInfo{13, false},
+	tMINUS: operatorInfo{13, false},
+	tMULT:  operatorInfo{14, false},
+	tDIV:   operatorInfo{14, false},
+	tMOD:   operatorInfo{14, false},
+	tEXP:   operatorInfo{15, true},
+}
