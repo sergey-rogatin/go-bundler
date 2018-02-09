@@ -21,16 +21,17 @@ const (
 )
 
 type parsingError struct {
-	kind int
-	tok  token
+	kind    int
+	tok     token
+	context []token
 }
 
 func (pe parsingError) Error() string {
 	switch pe.kind {
 	case p_UNEXPECTED_TOKEN:
 		return fmt.Sprintf(
-			"Unexpected token \"%s\" at %v:%v",
-			pe.tok.lexeme, pe.tok.line, pe.tok.column,
+			"Unexpected token \"%s\" at %v:%v, %s",
+			pe.tok.lexeme, pe.tok.line, pe.tok.column, pe.context,
 		)
 
 	case p_UNNAMED_FUNCTION:
@@ -77,10 +78,22 @@ func test(tTypes ...tokenType) bool {
 	return false
 }
 
+func getNoNewline() token {
+	i := index
+	for sourceTokens[i].tType == tNEWLINE {
+		i++
+	}
+	return sourceTokens[i]
+}
+
 func accept(tTypes ...tokenType) bool {
 	prevPos := index
 	for tok.tType == tNEWLINE {
 		next()
+	}
+	if tTypes == nil {
+		next()
+		return true
 	}
 	for _, tType := range tTypes {
 		if tok.tType == tType {
@@ -102,7 +115,10 @@ func checkASI(tType tokenType) {
 			return
 		}
 	}
-	panic(parsingError{p_UNEXPECTED_TOKEN, tok})
+	panic(parsingError{
+		p_UNEXPECTED_TOKEN, tok,
+		sourceTokens[index-5 : index+5],
+	})
 }
 
 func expect(tType tokenType) {
@@ -183,8 +199,35 @@ func parseProgram() (program astNode, err error) {
 	return
 }
 
+func parseTryCatchStatement() astNode {
+	var try, catch, finally, catchValue astNode
+
+	expect(tCURLY_LEFT)
+	try = parseBlockStatement()
+	if accept(tCATCH) {
+		expect(tPAREN_LEFT)
+		catchValue = parseExpression()
+		expect(tPAREN_RIGHT)
+
+		expect(tCURLY_LEFT)
+		catch = parseBlockStatement()
+	}
+	if accept(tFINALLY) {
+		expect(tCURLY_LEFT)
+		finally = parseBlockStatement()
+	}
+
+	return makeNode(
+		g_TRY_CATCH_STATEMENT, "", try, catchValue, catch, finally,
+	)
+}
+
 func parseStatement() astNode {
 	switch {
+	case accept(tTHROW):
+		return makeNode(g_THROW_STATEMENT, "", parseExpression())
+	case accept(tTRY):
+		return parseTryCatchStatement()
 	case accept(tVAR, tCONST, tLET):
 		return parseDeclarationStatement()
 	case accept(tRETURN):
@@ -462,7 +505,11 @@ func parseExpressionStatement() astNode {
 }
 
 func parseReturnStatement() astNode {
-	return makeNode(g_RETURN_STATEMENT, "", parseExpression())
+	if accept(tSEMI) {
+		return makeNode(g_RETURN_STATEMENT, "")
+	}
+	expr := parseExpression()
+	return makeNode(g_RETURN_STATEMENT, "", expr)
 }
 
 func parseExpression() astNode {
@@ -563,8 +610,9 @@ func parseConditional() astNode {
 
 	if accept(tQUESTION) {
 		consequent := parseConditional()
+		expect(tCOLON)
 		alternate := parseConditional()
-		return makeNode(g_EXPRESSION, "?", test, consequent, alternate)
+		return makeNode(g_CONDITIONAL_EXPRESSION, "?", test, consequent, alternate)
 	}
 
 	return test
@@ -708,6 +756,10 @@ func parseConstructorCall() astNode {
 
 func parseAtom() astNode {
 	switch {
+	case accept(tDIV):
+		return parseRegexp()
+	case accept(tHEX):
+		return makeNode(g_HEX_LITERAL, getLexeme())
 	case accept(tPAREN_LEFT):
 		return parseParensOrLambda()
 	case accept(tCURLY_LEFT):
@@ -735,6 +787,27 @@ func parseAtom() astNode {
 		checkASI(tSEMI)
 	}
 	return astNode{}
+}
+
+func parseRegexp() astNode {
+	value := "/"
+	for {
+		if accept(tDIV) {
+			if sourceTokens[index-2].tType != tESCAPE {
+				break
+			} else {
+				value += getLexeme()
+			}
+		}
+		next()
+		value += getLexeme()
+	}
+	value += "/"
+	if accept(tNAME) {
+		value += getLexeme()
+	}
+	fmt.Println(value)
+	return makeNode(g_REGEXP_LITERAL, value)
 }
 
 func parseParensOrLambda() astNode {
@@ -816,8 +889,8 @@ func parseObjectLiteral() astNode {
 			key = makeNode(g_NAME, getLexeme())
 		} else if accept(tBRACKET_LEFT) {
 			key = parseCalculatedPropertyName()
-		} else if isValidPropertyName(tok.lexeme) || test(tNUMBER) {
-			next()
+		} else if isValidPropertyName(getNoNewline().lexeme) || test(tNUMBER, tSTRING) {
+			accept()
 			key = makeNode(g_VALID_PROPERTY_NAME, getLexeme())
 		}
 		prop.children = append(prop.children, key)
@@ -913,7 +986,7 @@ func parseDeclarator() astNode {
 	var left astNode
 	if accept(tCURLY_LEFT) {
 		left = parseObjectPattern()
-	} else if accept(tNAME) {
+	} else if accept(tNAME, tFROM) {
 		left = makeNode(g_NAME, getLexeme())
 	} else {
 		return left

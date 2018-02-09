@@ -108,6 +108,7 @@ var operators = map[string]tokenType{
 	"<<":   tBITWISE_SHIFT_LEFT,
 	">>>":  tBITWISE_SHIFT_RIGHT_ZERO,
 	"...":  tSPREAD,
+	"\\":   tESCAPE,
 }
 
 const (
@@ -223,6 +224,9 @@ const (
 	tNUMBER
 	tSTRING
 	tNAME
+	tHEX
+	tREGEXP
+	tESCAPE
 )
 
 var tokenTypeNames = []string{
@@ -334,6 +338,9 @@ var tokenTypeNames = []string{
 	"tNUMBER",
 	"tSTRING",
 	"tNAME",
+	"tHEX",
+	"tREGEXP",
+	"tESCAPE",
 }
 
 func (t tokenType) String() string {
@@ -415,6 +422,9 @@ var grammarTypeToString = []string{
 	"g_CONTINUE_STATEMENT",
 	"g_DEBUGGER_STATEMENT",
 	"g_MULTISTATEMENT",
+	"g_HEX_LITERAL",
+	"g_REGEXP_LITERAL",
+	"g_CONDITIONAL_EXPRESSION",
 }
 
 func (g grammarType) String() string {
@@ -494,6 +504,11 @@ const (
 	g_CONTINUE_STATEMENT
 	g_DEBUGGER_STATEMENT
 	g_MULTISTATEMENT
+	g_HEX_LITERAL
+	g_REGEXP_LITERAL
+	g_TRY_CATCH_STATEMENT
+	g_THROW_STATEMENT
+	g_CONDITIONAL_EXPRESSION
 )
 
 type operatorInfo struct {

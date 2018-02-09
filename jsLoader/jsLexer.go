@@ -25,7 +25,11 @@ func isKeyword(t token) bool {
 }
 
 func isNumber(c byte) bool {
-	return c >= '0' && c <= '9'
+	return (c >= '0' && c <= '9')
+}
+
+func isHexadecimal(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')
 }
 
 func isLetter(c byte) bool {
@@ -100,6 +104,15 @@ func lex(src []byte) []token {
 
 	for i < len(src) {
 		switch {
+
+		case substr(i, i+2) == "0x":
+			eat(tHEX)
+			eat(tHEX)
+			for isHexadecimal(c) {
+				eat(tHEX)
+			}
+			end()
+
 		case isNumber(c):
 			for isNumber(c) {
 				eat(tNUMBER)
@@ -122,8 +135,9 @@ func lex(src []byte) []token {
 			end()
 
 		case isStringParen(c):
+			startSymbol := c
 			eat(tSTRING)
-			for !isStringParen(c) {
+			for c != startSymbol {
 				eat(tSTRING)
 			}
 			eat(tSTRING)
@@ -146,6 +160,9 @@ func lex(src []byte) []token {
 
 		case substr(i, i+2) == "/*":
 			for substr(i, i+2) != "*/" {
+				if c == '\n' {
+					line++
+				}
 				skip()
 			}
 			skip()

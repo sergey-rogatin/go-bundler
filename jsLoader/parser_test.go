@@ -723,6 +723,86 @@ func TestExportTransform(t *testing.T) {
 	}
 }
 
+func TestRequireTransform(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			"var a = require('./foo');",
+			"var a=foo_js;",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		ast, _ := parseTokens(sourceTokens)
+		transAst, _ := transformIntoModule(ast, "a.js")
+
+		str := printAst(transAst)
+		t.Error(ast)
+		cutStr := str[35 : len(str)-19]
+
+		if cutStr != c.res {
+			t.Errorf("%v", ast)
+			t.Errorf("Expected %s, got %s", c.res, cutStr)
+		}
+	}
+}
+
+func TestObjectLiteral2(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			`return {
+				result: mapResult,
+				keyPrefix: keyPrefix,
+				func: mapFunction,
+				context: mapContext,
+				count: 0
+			};`,
+			"return {result:mapResult,keyPrefix:keyPrefix," +
+				"func:mapFunction,context:mapContext,count:0};",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := parseStatement()
+
+		act := printAst(le)
+		if act != c.res {
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+		}
+	}
+}
+
+func TestConditional(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			"foo?bar:baz;",
+			"foo?bar:baz;",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := parseStatement()
+
+		act := printAst(le)
+		if act != c.res {
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+		}
+	}
+}
+
 // func TestArrayPattern(t *testing.T) {
 // 	cases := []struct {
 // 		src string

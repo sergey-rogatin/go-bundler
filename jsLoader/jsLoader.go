@@ -39,10 +39,14 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 	var modifyAst,
 		modifyProgram,
 		modifyImport,
-		modifyExport func(astNode) astNode
+		modifyExport,
+		modifyFunctionCall func(astNode) astNode
 
 	modifyAst = func(n astNode) astNode {
 		switch n.t {
+
+		case g_FUNCTION_CALL:
+			return modifyFunctionCall(n)
 
 		case g_EXPORT_STATEMENT:
 			return modifyExport(n)
@@ -63,16 +67,46 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 		}
 	}
 
+	modifyFunctionCall = func(n astNode) astNode {
+		children := []astNode{}
+		for _, c := range n.children {
+			children = append(children, modifyAst(c))
+		}
+		n.children = children
+
+		nameNode := children[0]
+		args := children[1].children
+
+		if nameNode.value == "require" {
+			if len(args) == 1 && args[0].t == g_STRING_LITERAL {
+				path := args[0].value
+				resolvedPath := resolveES6ImportPath(path, fileName)
+				fileImports = append(fileImports, resolvedPath)
+
+				objectName := CreateVarNameFromPath(resolvedPath)
+				object := makeNode(g_NAME, objectName)
+				return object
+			}
+
+			fmt.Printf("Wrong arguments to require function")
+			return n
+		}
+
+		return n
+	}
+
 	modifyProgram = func(n astNode) astNode {
 		statements := []astNode{}
 
 		// add var exports = {}
 		exportsObj := makeNode(g_NAME, "exports")
-		right := makeNode(g_OBJECT_LITERAL, "")
-		decl := makeNode(g_DECLARATOR, "", exportsObj, right)
-		declExpr := makeNode(g_DECLARATION_EXPRESSION, "var", decl)
-		declSt := makeNode(g_DECLARATION_STATEMENT, "", declExpr)
-		statements = append(statements, declSt)
+		{
+			right := makeNode(g_OBJECT_LITERAL, "")
+			decl := makeNode(g_DECLARATOR, "", exportsObj, right)
+			declExpr := makeNode(g_DECLARATION_EXPRESSION, "var", decl)
+			declSt := makeNode(g_DECLARATION_STATEMENT, "", declExpr)
+			statements = append(statements, declSt)
+		}
 
 		// add all other statements
 		for _, st := range n.children {
@@ -91,10 +125,10 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 		objectName := CreateVarNameFromPath(fileName)
 		object := makeNode(g_NAME, objectName)
 
-		decl = makeNode(g_DECLARATOR, "", object, funcCall)
+		decl := makeNode(g_DECLARATOR, "", object, funcCall)
 
-		declExpr = makeNode(g_DECLARATION_EXPRESSION, "var", decl)
-		declSt = makeNode(g_DECLARATION_STATEMENT, "", declExpr)
+		declExpr := makeNode(g_DECLARATION_EXPRESSION, "var", decl)
+		declSt := makeNode(g_DECLARATION_STATEMENT, "", declExpr)
 
 		return declSt
 	}
@@ -160,6 +194,7 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 		pathNode := n.children[2]
 		if pathNode.value != "" {
 			resolvedPath := resolveES6ImportPath(pathNode.value, fileName)
+			fileImports = append(fileImports, resolvedPath)
 			objectName := CreateVarNameFromPath(resolvedPath)
 			importObj = makeNode(g_NAME, objectName)
 		}
@@ -233,7 +268,9 @@ func resolveES6ImportPath(importPath, currentFileName string) string {
 	if len(pathParts) > 0 {
 		if pathParts[0] != "." && pathParts[0] != ".." {
 			locationParts = []string{"node_modules"}
-			pathParts = append(pathParts, "index.js")
+			if len(pathParts) == 1 {
+				pathParts = append(pathParts, "index.js")
+			}
 		}
 	}
 

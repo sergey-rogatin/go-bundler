@@ -441,7 +441,13 @@ func printAst(n astNode) string {
 		return result
 
 	case g_RETURN_STATEMENT:
-		return "return " + printAst(n.children[0]) + ";"
+		result := "return"
+		if len(n.children) > 0 {
+			result += " " + printAst(n.children[0])
+		}
+		result += ";"
+
+		return result
 
 	case g_IMPORT_NAME:
 		return n.value
@@ -452,6 +458,34 @@ func printAst(n astNode) string {
 			result += printAst(st)
 		}
 		return result
+
+	case g_HEX_LITERAL:
+		return n.value
+
+	case g_REGEXP_LITERAL:
+		return n.value
+
+	case g_TRY_CATCH_STATEMENT:
+		result := "try"
+		result += printAst(n.children[0])
+		catch := printAst(n.children[2])
+		finally := printAst(n.children[3])
+		if catch != "" {
+			result += "catch(" + printAst(n.children[1]) + ")"
+			result += catch
+		}
+		if finally != "" {
+			result += "finally"
+			result += finally
+		}
+
+		return result
+
+	case g_THROW_STATEMENT:
+		return "throw " + printAst(n.children[0])
+
+	case g_CONDITIONAL_EXPRESSION:
+		return printAst(n.children[0]) + "?" + printAst(n.children[1]) + ":" + printAst(n.children[2])
 	}
 
 	return ""
