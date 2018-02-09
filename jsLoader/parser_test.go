@@ -4,11 +4,15 @@ import (
 	"testing"
 )
 
+var ps parserState
+
 func setParser(text string) {
 	toks := lex([]byte(text))
-	sourceTokens = toks
-	index = 0
-	tok = sourceTokens[index]
+	ps = parserState{
+		sourceTokens: toks,
+		index:        0,
+		tok:          toks[0],
+	}
 }
 
 func TestLambda(t *testing.T) {
@@ -32,7 +36,7 @@ func TestLambda(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseExpression()
+		le := parseExpression(&ps)
 
 		res := printAst(le)
 		if res != c.exp {
@@ -59,7 +63,7 @@ func TestMemberExpression(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseStatement()
+		le := parseStatement(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -102,11 +106,17 @@ func TestObjectLiteral(t *testing.T) {
 			"{set foo() {}, get foo() {}}",
 			"{set foo(){},get foo(){}}",
 		},
+		{
+			`{
+					get _enabled () { return _enabled;},
+				};`,
+			"{get _enabled(){return _enabled;;}}",
+		},
 	}
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseExpression()
+		le := parseExpression(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -137,7 +147,7 @@ func TestFunctionExpression(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseExpression()
+		le := parseExpression(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -160,7 +170,7 @@ func TestArrayLiteral(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseExpression()
+		le := parseExpression(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -183,7 +193,30 @@ func TestBlockStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseStatement()
+		le := parseStatement(&ps)
+
+		act := printAst(le)
+		if act != c.res {
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+		}
+	}
+}
+
+func TestMarkerStatement(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			"{foo:let i=0;}",
+			"{foo:let i=0;}",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := parseStatement(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -234,11 +267,88 @@ func TestForStatement(t *testing.T) {
 			"for(const foo in bar) {foo = 3;}",
 			"for(const foo in bar){foo=3;}",
 		},
+		{
+			"for(a in b; i < 21; i++) {foo = 3;}",
+			"for(a in b;i<21;i++){foo=3;}",
+		},
 	}
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseStatement()
+		le := parseStatement(&ps)
+
+		act := printAst(le)
+		if act != c.res {
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+		}
+	}
+}
+
+func TestInAndInstanceof(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			"for(a in b; i < 21; i++) {foo = 3;}",
+			"for(a in b;i<21;i++){foo=3;}",
+		},
+		{
+			"a instanceof b;",
+			"a instanceof b;",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := parseStatement(&ps)
+
+		act := printAst(le)
+		if act != c.res {
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+		}
+	}
+}
+
+func TestExpressions(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			"!!(a+b);",
+			"!!(a+b);",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := parseStatement(&ps)
+
+		act := printAst(le)
+		if act != c.res {
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+		}
+	}
+}
+
+func TestStringLiterals(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			"'foo \\' + fsbds'",
+			"'foo \\' + fsbds'",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := parseStatement(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -269,7 +379,7 @@ func TestWhileStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseStatement()
+		le := parseStatement(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -300,7 +410,7 @@ func TestDoWhileStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseStatement()
+		le := parseStatement(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -331,7 +441,7 @@ func TestIfStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseStatement()
+		le := parseStatement(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -354,7 +464,7 @@ func TestFunctionStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseStatement()
+		le := parseStatement(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -393,7 +503,7 @@ func TestImportStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseStatement()
+		le := parseStatement(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -428,7 +538,7 @@ func TestExpressionStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseStatement()
+		le := parseStatement(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -487,7 +597,7 @@ func TestExportStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseStatement()
+		le := parseStatement(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -530,7 +640,7 @@ func TestObjectDestructuring(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseStatement()
+		le := parseStatement(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -557,7 +667,7 @@ func TestSwitchStatement(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseStatement()
+		le := parseStatement(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -605,7 +715,7 @@ func TestNewlineAndSemi(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseStatement()
+		le := parseStatement(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -648,7 +758,7 @@ func TestImportTransform(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ast, _ := parseTokens(sourceTokens)
+		ast, _ := parseTokens(ps.sourceTokens)
 		transAst, _ := transformIntoModule(ast, "a.js")
 
 		str := printAst(transAst)
@@ -710,7 +820,7 @@ func TestExportTransform(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ast, _ := parseTokens(sourceTokens)
+		ast, _ := parseTokens(ps.sourceTokens)
 		transAst, _ := transformIntoModule(ast, "a.js")
 
 		str := printAst(transAst)
@@ -736,11 +846,10 @@ func TestRequireTransform(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ast, _ := parseTokens(sourceTokens)
+		ast, _ := parseTokens(ps.sourceTokens)
 		transAst, _ := transformIntoModule(ast, "a.js")
 
 		str := printAst(transAst)
-		t.Error(ast)
 		cutStr := str[35 : len(str)-19]
 
 		if cutStr != c.res {
@@ -750,7 +859,7 @@ func TestRequireTransform(t *testing.T) {
 	}
 }
 
-func TestObjectLiteral2(t *testing.T) {
+func TestReturnStatement(t *testing.T) {
 	cases := []struct {
 		src string
 		res string
@@ -770,7 +879,7 @@ func TestObjectLiteral2(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseStatement()
+		le := parseStatement(&ps)
 
 		act := printAst(le)
 		if act != c.res {
@@ -793,7 +902,34 @@ func TestConditional(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseStatement()
+		le := parseStatement(&ps)
+
+		act := printAst(le)
+		if act != c.res {
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+		}
+	}
+}
+
+func TestRegexp(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			"var foo = a * /[a-zA-Z]/gi;",
+			"var foo=a*/[a-zA-Z]/gi;",
+		},
+		{
+			"var foo = a * /[a-zA-Z]/ + 3;",
+			"var foo=a*/[a-zA-Z]/+3;",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := parseStatement(&ps)
 
 		act := printAst(le)
 		if act != c.res {

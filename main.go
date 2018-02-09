@@ -42,10 +42,11 @@ func (sf *safeFile) close() {
 }
 
 type fileCache struct {
-	data        []byte
-	lastModTime time.Time
-	imports     []string
-	isReachable bool
+	data           []byte
+	lastModTime    time.Time
+	imports        []string
+	isReachable    bool
+	isBeingBundled bool
 }
 
 type bundleCache struct {
@@ -194,14 +195,12 @@ func addFileToBundle(
 	var fileImports []string
 	var lastModTime time.Time
 
-	defer func() {
-		cache.write(resolvedPath, fileCache{
-			data:        data,
-			imports:     fileImports,
-			lastModTime: lastModTime,
-			isReachable: true,
-		})
-	}()
+	cachedFile, ok := cache.read(resolvedPath)
+	if ok {
+		// fmt.Printf("%s is already bundled\n", resolvedPath)
+		errorCh <- nil
+		return
+	}
 
 	ext := filepath.Ext(resolvedPath)
 	fileStats, err := os.Stat(resolvedPath)
@@ -211,20 +210,18 @@ func addFileToBundle(
 	}
 	lastModTime = fileStats.ModTime()
 
-	cachedFile, ok := cache.read(resolvedPath)
 	if ok && cachedFile.lastModTime == fileStats.ModTime() {
 		data = cachedFile.data
 		fileImports = cachedFile.imports
 	} else {
+		//fmt.Printf("Loading %s\n", resolvedPath)
 		switch ext {
 		case ".js":
-
 			src, err := ioutil.ReadFile(resolvedPath)
 			if err != nil {
 				errorCh <- err
 				return
 			}
-
 			data, fileImports, err = jsLoader.LoadFile(src, resolvedPath)
 			if err != nil {
 				errorCh <- err
@@ -237,6 +234,13 @@ func addFileToBundle(
 			copyFile(dstFileName, resolvedPath)
 		}
 	}
+
+	cache.write(resolvedPath, fileCache{
+		data:        data,
+		imports:     fileImports,
+		lastModTime: lastModTime,
+		isReachable: true,
+	})
 
 	err = addFilesToBundle(fileImports, bundleSf, cache)
 	bundleSf.write(data)

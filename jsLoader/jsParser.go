@@ -2,16 +2,21 @@ package jsLoader
 
 import "fmt"
 
-var sourceTokens []token
-var index int
-var tok token
+type parserState struct {
+	sourceTokens            []token
+	index                   int
+	tok                     token
+	globalFlagIsInsideForIn bool
+}
 
 func parseTokens(localSrc []token) (astNode, error) {
-	sourceTokens = localSrc
-	index = 0
-	tok = sourceTokens[index]
+	p := parserState{
+		sourceTokens: localSrc,
+		index:        0,
+		tok:          localSrc[0],
+	}
 
-	return parseProgram()
+	return parseProgram(&p)
 }
 
 const (
@@ -53,87 +58,87 @@ func (pe parsingError) Error() string {
 
 // helper functions for parsing
 
-func next() {
-	index++
-	if index < len(sourceTokens) {
-		tok = sourceTokens[index]
+func next(p *parserState) {
+	p.index++
+	if p.index < len(p.sourceTokens) {
+		p.tok = p.sourceTokens[p.index]
 	}
 }
 
-func backtrack(backIndex int) {
-	index = backIndex
-	tok = sourceTokens[index]
+func backtrack(p *parserState, backIndex int) {
+	p.index = backIndex
+	p.tok = p.sourceTokens[p.index]
 }
 
-func test(tTypes ...tokenType) bool {
-	i := index
-	for sourceTokens[i].tType == tNEWLINE {
+func test(p *parserState, tTypes ...tokenType) bool {
+	i := p.index
+	for p.sourceTokens[i].tType == tNEWLINE {
 		i++
 	}
 	for _, tType := range tTypes {
-		if sourceTokens[i].tType == tType {
+		if p.sourceTokens[i].tType == tType {
 			return true
 		}
 	}
 	return false
 }
 
-func getNoNewline() token {
-	i := index
-	for sourceTokens[i].tType == tNEWLINE {
+func getNoNewline(p *parserState) token {
+	i := p.index
+	for p.sourceTokens[i].tType == tNEWLINE {
 		i++
 	}
-	return sourceTokens[i]
+	return p.sourceTokens[i]
 }
 
-func accept(tTypes ...tokenType) bool {
-	prevPos := index
-	for tok.tType == tNEWLINE {
-		next()
+func accept(p *parserState, tTypes ...tokenType) bool {
+	prevPos := p.index
+	for p.tok.tType == tNEWLINE {
+		next(p)
 	}
 	if tTypes == nil {
-		next()
+		next(p)
 		return true
 	}
 	for _, tType := range tTypes {
-		if tok.tType == tType {
-			next()
+		if p.tok.tType == tType {
+			next(p)
 			return true
 		}
 	}
-	backtrack(prevPos)
+	backtrack(p, prevPos)
 	return false
 }
 
-func checkASI(tType tokenType) {
+func checkASI(p *parserState, tType tokenType) {
 	if tType == tSEMI {
-		if tok.tType == tNEWLINE {
-			next()
+		if p.tok.tType == tNEWLINE {
+			next(p)
 			return
 		}
-		if tok.tType == tCURLY_RIGHT || tok.tType == tEND_OF_INPUT {
+		if p.tok.tType == tCURLY_RIGHT || p.tok.tType == tEND_OF_INPUT {
 			return
 		}
 	}
 	panic(parsingError{
-		p_UNEXPECTED_TOKEN, tok,
-		sourceTokens[index-5 : index+5],
+		p_UNEXPECTED_TOKEN, p.tok,
+		p.sourceTokens[p.index-5 : p.index+5],
 	})
 }
 
-func expect(tType tokenType) {
-	if accept(tType) {
+func expect(p *parserState, tType tokenType) {
+	if accept(p, tType) {
 		return
 	}
-	checkASI(tType)
+	checkASI(p, tType)
 }
 
-func getLexeme() string {
-	return sourceTokens[index-1].lexeme
+func getLexeme(p *parserState) string {
+	return p.sourceTokens[p.index-1].lexeme
 }
 
-func getToken() token {
-	return sourceTokens[index-1]
+func getToken(p *parserState) token {
+	return p.sourceTokens[p.index-1]
 }
 
 func isValidPropertyName(name string) bool {
@@ -179,7 +184,7 @@ func makeNode(t grammarType, value string, children ...astNode) astNode {
 	return astNode{t, value, children, 0}
 }
 
-func parseProgram() (program astNode, err error) {
+func parseProgram(p *parserState) (program astNode, err error) {
 	err = nil
 
 	defer func() {
@@ -191,30 +196,30 @@ func parseProgram() (program astNode, err error) {
 	}()
 
 	statements := []astNode{}
-	for !accept(tEND_OF_INPUT) {
-		statements = append(statements, parseStatement())
+	for !accept(p, tEND_OF_INPUT) {
+		statements = append(statements, parseStatement(p))
 	}
 
 	program = makeNode(g_PROGRAM_STATEMENT, "", statements...)
 	return
 }
 
-func parseTryCatchStatement() astNode {
+func parseTryCatchStatement(p *parserState) astNode {
 	var try, catch, finally, catchValue astNode
 
-	expect(tCURLY_LEFT)
-	try = parseBlockStatement()
-	if accept(tCATCH) {
-		expect(tPAREN_LEFT)
-		catchValue = parseExpression()
-		expect(tPAREN_RIGHT)
+	expect(p, tCURLY_LEFT)
+	try = parseBlockStatement(p)
+	if accept(p, tCATCH) {
+		expect(p, tPAREN_LEFT)
+		catchValue = parseExpression(p)
+		expect(p, tPAREN_RIGHT)
 
-		expect(tCURLY_LEFT)
-		catch = parseBlockStatement()
+		expect(p, tCURLY_LEFT)
+		catch = parseBlockStatement(p)
 	}
-	if accept(tFINALLY) {
-		expect(tCURLY_LEFT)
-		finally = parseBlockStatement()
+	if accept(p, tFINALLY) {
+		expect(p, tCURLY_LEFT)
+		finally = parseBlockStatement(p)
 	}
 
 	return makeNode(
@@ -222,54 +227,63 @@ func parseTryCatchStatement() astNode {
 	)
 }
 
-func parseStatement() astNode {
+func parseStatement(p *parserState) astNode {
+	startPos := p.index
+	if accept(p, tNAME) {
+		markerName := getLexeme(p)
+		if accept(p, tCOLON) {
+			return makeNode(g_MARKER, markerName)
+		}
+		backtrack(p, startPos)
+	}
+
 	switch {
-	case accept(tTHROW):
-		return makeNode(g_THROW_STATEMENT, "", parseExpression())
-	case accept(tTRY):
-		return parseTryCatchStatement()
-	case accept(tVAR, tCONST, tLET):
-		return parseDeclarationStatement()
-	case accept(tRETURN):
-		return parseReturnStatement()
-	case accept(tIMPORT):
-		return parseImportStatement()
-	case accept(tFUNCTION):
-		return parseFunctionDeclaration()
-	case accept(tDO):
-		return parseDoWhileStatement()
-	case accept(tWHILE):
-		return parseWhileStatement()
-	case accept(tFOR):
-		return parseForStatement()
-	case accept(tCURLY_LEFT):
-		return parseBlockStatement()
-	case accept(tIF):
-		return parseIfStatement()
-	case accept(tEXPORT):
-		return parseExportStatement()
-	case accept(tSWITCH):
-		return parseSwitchStatement()
-	case accept(tSEMI):
+	case accept(p, tTHROW):
+		return makeNode(g_THROW_STATEMENT, "", parseExpression(p))
+	case accept(p, tTRY):
+		return parseTryCatchStatement(p)
+	case accept(p, tVAR, tCONST, tLET):
+		return parseDeclarationStatement(p)
+	case accept(p, tRETURN):
+		return parseReturnStatement(p)
+	case accept(p, tIMPORT):
+		return parseImportStatement(p)
+	case accept(p, tFUNCTION):
+		return parseFunctionDeclaration(p)
+	case accept(p, tDO):
+		return parseDoWhileStatement(p)
+	case accept(p, tWHILE):
+		return parseWhileStatement(p)
+	case accept(p, tFOR):
+		return parseForStatement(p)
+	case accept(p, tCURLY_LEFT):
+		return parseBlockStatement(p)
+	case accept(p, tIF):
+		return parseIfStatement(p)
+	case accept(p, tEXPORT):
+		return parseExportStatement(p)
+	case accept(p, tSWITCH):
+		return parseSwitchStatement(p)
+	case accept(p, tSEMI):
 		return makeNode(g_EMPTY_STATEMENT, ";")
 	default:
-		return parseExpressionStatement()
+		return parseExpressionStatement(p)
 	}
 }
 
-func parseExportStatement() astNode {
+func parseExportStatement(p *parserState) astNode {
 	declaration := makeNode(g_EXPORT_DECLARATION, "")
 	path := makeNode(g_EXPORT_PATH, "")
 	vars := []astNode{}
 	flags := 0
 
-	if accept(tDEFAULT) {
+	if accept(p, tDEFAULT) {
 
 		var name astNode
 		alias := makeNode(g_EXPORT_ALIAS, "default")
 
-		if accept(tFUNCTION) {
-			fe := parseFunctionExpression()
+		if accept(p, tFUNCTION) {
+			fe := parseFunctionExpression(p)
 			if fe.value != "" {
 				declaration = fe
 				name = makeNode(g_EXPORT_NAME, fe.value)
@@ -277,41 +291,41 @@ func parseExportStatement() astNode {
 				name = fe
 			}
 		} else {
-			name = parseExpression()
+			name = parseExpression(p)
 		}
 
 		ev := makeNode(g_EXPORT_VAR, "", name, alias)
 		vars = append(vars, ev)
-		expect(tSEMI)
+		expect(p, tSEMI)
 
-	} else if accept(tCURLY_LEFT) {
-		for !accept(tCURLY_RIGHT) {
-			if accept(tNAME) {
-				name := makeNode(g_EXPORT_NAME, getLexeme())
+	} else if accept(p, tCURLY_LEFT) {
+		for !accept(p, tCURLY_RIGHT) {
+			if accept(p, tNAME) {
+				name := makeNode(g_EXPORT_NAME, getLexeme(p))
 				alias := name
 
-				if accept(tAS) {
-					next()
-					alias = makeNode(g_EXPORT_ALIAS, getLexeme())
+				if accept(p, tNAME) && getLexeme(p) == "as" {
+					next(p)
+					alias = makeNode(g_EXPORT_ALIAS, getLexeme(p))
 				}
 				ev := makeNode(g_EXPORT_VAR, "", name, alias)
 				vars = append(vars, ev)
 			}
 
-			if !accept(tCOMMA) {
-				expect(tCURLY_RIGHT)
+			if !accept(p, tCOMMA) {
+				expect(p, tCURLY_RIGHT)
 				break
 			}
 		}
 
-		if accept(tFROM) {
-			expect(tSTRING)
-			path = makeNode(g_EXPORT_PATH, getLexeme())
+		if accept(p, tNAME) && getLexeme(p) == "from" {
+			expect(p, tSTRING)
+			path = makeNode(g_EXPORT_PATH, getLexeme(p))
 		}
-		expect(tSEMI)
+		expect(p, tSEMI)
 
-	} else if accept(tVAR, tLET, tCONST) {
-		declaration = parseDeclarationStatement()
+	} else if accept(p, tVAR, tLET, tCONST) {
+		declaration = parseDeclarationStatement(p)
 		for _, d := range declaration.children[0].children {
 			name := d.children[0]
 			alias := d.children[0]
@@ -320,20 +334,23 @@ func parseExportStatement() astNode {
 			vars = append(vars, ev)
 		}
 
-	} else if accept(tFUNCTION) {
-		fs := parseFunctionDeclaration()
+	} else if accept(p, tFUNCTION) {
+		fs := parseFunctionDeclaration(p)
 		declaration = fs
 		name := makeNode(g_EXPORT_NAME, fs.value)
 		alias := name
 		ev := makeNode(g_EXPORT_VAR, "", name, alias)
 		vars = append(vars, ev)
 
-	} else if accept(tMULT) {
-		expect(tFROM)
-		expect(tSTRING)
-		path = makeNode(g_EXPORT_PATH, getLexeme())
+	} else if accept(p, tMULT) {
+		expect(p, tNAME)
+		if getLexeme(p) != "from" {
+			checkASI(p, tSEMI)
+		}
+		expect(p, tSTRING)
+		path = makeNode(g_EXPORT_PATH, getLexeme(p))
 		flags = flags | f_EXPORT_ALL
-		expect(tSEMI)
+		expect(p, tSEMI)
 	}
 	varsNode := makeNode(g_EXPORT_VARS, "", vars...)
 
@@ -342,20 +359,20 @@ func parseExportStatement() astNode {
 	return result
 }
 
-func parseSwitchStatement() astNode {
-	expect(tPAREN_LEFT)
-	condition := parseExpression()
-	expect(tPAREN_RIGHT)
+func parseSwitchStatement(p *parserState) astNode {
+	expect(p, tPAREN_LEFT)
+	condition := parseExpression(p)
+	expect(p, tPAREN_RIGHT)
 
 	cases := []astNode{}
-	expect(tCURLY_LEFT)
-	for !accept(tCURLY_RIGHT) {
-		if accept(tCASE) {
-			caseTest := makeNode(g_SWITCH_CASE_TEST, "", parseExpression())
-			expect(tCOLON)
+	expect(p, tCURLY_LEFT)
+	for !accept(p, tCURLY_RIGHT) {
+		if accept(p, tCASE) {
+			caseTest := makeNode(g_SWITCH_CASE_TEST, "", parseExpression(p))
+			expect(p, tCOLON)
 			caseStatements := []astNode{}
-			for !test(tDEFAULT, tCASE, tCURLY_RIGHT) {
-				caseStatements = append(caseStatements, parseStatement())
+			for !test(p, tDEFAULT, tCASE, tCURLY_RIGHT) {
+				caseStatements = append(caseStatements, parseStatement(p))
 			}
 			statementNode := makeNode(
 				g_SWITCH_CASE_STATEMENTS, "", caseStatements...,
@@ -366,11 +383,11 @@ func parseSwitchStatement() astNode {
 			cases = append(cases, switchCase)
 		}
 
-		if accept(tDEFAULT) {
-			expect(tCOLON)
+		if accept(p, tDEFAULT) {
+			expect(p, tCOLON)
 			caseStatements := []astNode{}
-			for !test(tDEFAULT, tCASE, tCURLY_RIGHT) {
-				caseStatements = append(caseStatements, parseStatement())
+			for !test(p, tDEFAULT, tCASE, tCURLY_RIGHT) {
+				caseStatements = append(caseStatements, parseStatement(p))
 			}
 			defaultCase := makeNode(g_SWITCH_DEFAULT, "", caseStatements...)
 			cases = append(cases, defaultCase)
@@ -381,147 +398,156 @@ func parseSwitchStatement() astNode {
 	return makeNode(g_SWITCH_STATEMENT, "", condition, casesNode)
 }
 
-func parseDeclarationStatement() astNode {
+func parseDeclarationStatement(p *parserState) astNode {
 	decl := makeNode(
-		g_DECLARATION_STATEMENT, "", parseDeclarationExpression(),
+		g_DECLARATION_STATEMENT, "", parseDeclarationExpression(p),
 	)
-	expect(tSEMI)
+	expect(p, tSEMI)
 	return decl
 }
 
-func parseDeclarationExpression() astNode {
-	keyword := getLexeme()
+func parseDeclarationExpression(p *parserState) astNode {
+	keyword := getLexeme(p)
 
 	ve := makeNode(g_DECLARATION_EXPRESSION, keyword, []astNode{}...)
-	for ok := true; ok; ok = accept(tCOMMA) {
-		ve.children = append(ve.children, parseDeclarator())
+	for ok := true; ok; ok = accept(p, tCOMMA) {
+		ve.children = append(ve.children, parseDeclarator(p))
 	}
 
 	return ve
 }
 
-func parseForStatement() astNode {
-	expect(tPAREN_LEFT)
+func parseForStatement(p *parserState) astNode {
+	expect(p, tPAREN_LEFT)
 	var init astNode
-	if accept(tVAR, tLET, tCONST) {
-		init = parseDeclarationExpression()
-	} else if test(tSEMI) {
+	if accept(p, tVAR, tLET, tCONST) {
+		init = parseDeclarationExpression(p)
+	} else if test(p, tSEMI) {
 		init = makeNode(g_EMPTY_EXPRESSION, "")
 	} else {
-		init = parseSequence()
+		startPos := p.index
+		init = parseSequence(p)
+
+		// we accidentally parsed for in loop
+		if accept(p, tPAREN_RIGHT) {
+			backtrack(p, startPos)
+			p.globalFlagIsInsideForIn = true
+			init = parseSequence(p)
+			p.globalFlagIsInsideForIn = false
+		}
 	}
 
-	if accept(tOF) {
+	if accept(p, tNAME) && getLexeme(p) == "of" {
 		left := init
-		right := parseExpression()
-		expect(tPAREN_RIGHT)
-		body := parseStatement()
+		right := parseExpression(p)
+		expect(p, tPAREN_RIGHT)
+		body := parseStatement(p)
 		return makeNode(g_FOR_OF_STATEMENT, "", left, right, body)
-	} else if accept(tIN) {
+	} else if accept(p, tIN) {
 		left := init
-		right := parseExpression()
-		expect(tPAREN_RIGHT)
-		body := parseStatement()
+		right := parseExpression(p)
+		expect(p, tPAREN_RIGHT)
+		body := parseStatement(p)
 		return makeNode(g_FOR_IN_STATEMENT, "", left, right, body)
 	} else {
 		var test, final astNode
 
-		expect(tSEMI)
-		if accept(tSEMI) {
+		expect(p, tSEMI)
+		if accept(p, tSEMI) {
 			test = makeNode(g_EMPTY_EXPRESSION, "")
 		} else {
-			test = parseExpression()
-			expect(tSEMI)
+			test = parseExpression(p)
+			expect(p, tSEMI)
 		}
 
-		if accept(tPAREN_RIGHT) {
+		if accept(p, tPAREN_RIGHT) {
 			final = makeNode(g_EMPTY_EXPRESSION, "")
 		} else {
-			final = parseExpression()
-			expect(tPAREN_RIGHT)
+			final = parseExpression(p)
+			expect(p, tPAREN_RIGHT)
 		}
 
-		body := parseStatement()
+		body := parseStatement(p)
 
 		return makeNode(g_FOR_STATEMENT, "", init, test, final, body)
 	}
 }
 
-func parseIfStatement() astNode {
-	expect(tPAREN_LEFT)
-	test := parseExpression()
-	expect(tPAREN_RIGHT)
-	body := parseStatement()
-	if accept(tELSE) {
-		alternate := parseStatement()
+func parseIfStatement(p *parserState) astNode {
+	expect(p, tPAREN_LEFT)
+	test := parseExpression(p)
+	expect(p, tPAREN_RIGHT)
+	body := parseStatement(p)
+	if accept(p, tELSE) {
+		alternate := parseStatement(p)
 		return makeNode(g_IF_STATEMENT, "", test, body, alternate)
 	}
 
 	return makeNode(g_IF_STATEMENT, "", test, body)
 }
 
-func parseWhileStatement() astNode {
-	expect(tPAREN_LEFT)
-	test := parseExpression()
-	expect(tPAREN_RIGHT)
-	body := parseStatement()
+func parseWhileStatement(p *parserState) astNode {
+	expect(p, tPAREN_LEFT)
+	test := parseExpression(p)
+	expect(p, tPAREN_RIGHT)
+	body := parseStatement(p)
 
 	return makeNode(g_WHILE_STATEMENT, "", test, body)
 }
 
-func parseDoWhileStatement() astNode {
-	body := parseStatement()
-	expect(tWHILE)
-	expect(tPAREN_LEFT)
-	test := parseExpression()
-	expect(tPAREN_RIGHT)
+func parseDoWhileStatement(p *parserState) astNode {
+	body := parseStatement(p)
+	expect(p, tWHILE)
+	expect(p, tPAREN_LEFT)
+	test := parseExpression(p)
+	expect(p, tPAREN_RIGHT)
 
 	return makeNode(g_DO_WHILE_STATEMENT, "", test, body)
 }
 
-func parseFunctionDeclaration() astNode {
-	expect(tNAME)
-	name := getLexeme()
+func parseFunctionDeclaration(p *parserState) astNode {
+	expect(p, tNAME)
+	name := getLexeme(p)
 
-	expect(tPAREN_LEFT)
-	params := parseFunctionParameters()
-	expect(tCURLY_LEFT)
-	body := parseBlockStatement()
+	expect(p, tPAREN_LEFT)
+	params := parseFunctionParameters(p)
+	expect(p, tCURLY_LEFT)
+	body := parseBlockStatement(p)
 
 	return makeNode(g_FUNCTION_DECLARATION, name, params, body)
 }
 
-func parseExpressionStatement() astNode {
-	if accept(tBREAK) {
+func parseExpressionStatement(p *parserState) astNode {
+	if accept(p, tBREAK) {
 		return makeNode(g_BREAK_STATEMENT, "")
-	} else if accept(tCONTINUE) {
+	} else if accept(p, tCONTINUE) {
 		return makeNode(g_CONTINUE_STATEMENT, "")
-	} else if accept(tDEBUGGER) {
+	} else if accept(p, tDEBUGGER) {
 		return makeNode(g_DEBUGGER_STATEMENT, "")
 	}
-	expr := makeNode(g_EXPRESSION_STATEMENT, "", parseExpression())
-	expect(tSEMI)
+	expr := makeNode(g_EXPRESSION_STATEMENT, "", parseExpression(p))
+	expect(p, tSEMI)
 	return expr
 }
 
-func parseReturnStatement() astNode {
-	if accept(tSEMI) {
+func parseReturnStatement(p *parserState) astNode {
+	if accept(p, tSEMI) {
 		return makeNode(g_RETURN_STATEMENT, "")
 	}
-	expr := parseExpression()
+	expr := parseExpression(p)
 	return makeNode(g_RETURN_STATEMENT, "", expr)
 }
 
-func parseExpression() astNode {
-	return parseSequence()
+func parseExpression(p *parserState) astNode {
+	return parseSequence(p)
 }
 
-func parseSequence() astNode {
-	firstItem := parseYield()
+func parseSequence(p *parserState) astNode {
+	firstItem := parseYield(p)
 
 	children := []astNode{firstItem}
-	for accept(tCOMMA) {
-		children = append(children, parseYield())
+	for accept(p, tCOMMA) {
+		children = append(children, parseYield(p))
 	}
 
 	if len(children) > 1 {
@@ -530,74 +556,74 @@ func parseSequence() astNode {
 	return firstItem
 }
 
-func parseYield() astNode {
-	if accept(tYIELD) {
-		return makeNode(g_EXPRESSION, "yield", parseYield())
+func parseYield(p *parserState) astNode {
+	if accept(p, tYIELD) {
+		return makeNode(g_EXPRESSION, "yield", parseYield(p))
 	}
-	return parseAssignment()
+	return parseAssignment(p)
 }
 
-func parseAssignment() astNode {
-	// if accept(tCURLY_LEFT) {
+func parseAssignment(p *parserState) astNode {
+	// if accept(p,tCURLY_LEFT) {
 	// 	left := parseObjectPattern()
 
-	// 	if accept(tASSIGN) {
+	// 	if accept(p,tASSIGN) {
 	// 		right := parseAssignment()
 	// 		return makeNode(g_EXPRESSION, "=", left, right)
 	// 	}
 	// }
 
-	left := parseConditional()
+	left := parseConditional(p)
 
-	if accept(
+	if accept(p,
 		tASSIGN, tPLUS_ASSIGN, tMINUS_ASSIGN, tMULT_ASSIGN, tDIV_ASSIGN,
 		tBITWISE_SHIFT_LEFT_ASSIGN, tBITWISE_SHIFT_RIGHT_ASSIGN,
 		tBITWISE_SHIFT_RIGHT_ZERO_ASSIGN, tBITWISE_AND_ASSIGN,
 		tBITWISE_OR_ASSIGN, tBITWISE_XOR_ASSIGN,
 	) {
-		op := getLexeme()
-		right := parseAssignment()
+		op := getLexeme(p)
+		right := parseAssignment(p)
 		return makeNode(g_EXPRESSION, op, left, right)
 	}
 
 	return left
 }
 
-func parseAssignmentPattern() astNode {
+func parseAssignmentPattern(p *parserState) astNode {
 	var left astNode
-	if accept(tCURLY_LEFT) {
-		left = parseObjectPattern()
-	} else if accept(tNAME) {
-		left = makeNode(g_NAME, getLexeme())
+	if accept(p, tCURLY_LEFT) {
+		left = parseObjectPattern(p)
+	} else if accept(p, tNAME) {
+		left = makeNode(g_NAME, getLexeme(p))
 	} else {
-		checkASI(tSEMI)
+		checkASI(p, tSEMI)
 	}
 
-	if accept(tASSIGN) {
-		right := parseExpression()
+	if accept(p, tASSIGN) {
+		right := parseExpression(p)
 		return makeNode(g_ASSIGNMENT_PATTERN, "=", left, right)
 	}
 
 	return left
 }
 
-func parseObjectPattern() astNode {
+func parseObjectPattern(p *parserState) astNode {
 	properties := []astNode{}
-	for !accept(tCURLY_RIGHT) {
-		if accept(tNAME) {
+	for !accept(p, tCURLY_RIGHT) {
+		if accept(p, tNAME) {
 			prop := makeNode(g_OBJECT_PROPERTY, "", []astNode{}...)
-			key := makeNode(g_NAME, getLexeme())
+			key := makeNode(g_NAME, getLexeme(p))
 			prop.children = append(prop.children, key)
 
-			if accept(tCOLON) {
-				prop.children = append(prop.children, parseAssignmentPattern())
+			if accept(p, tCOLON) {
+				prop.children = append(prop.children, parseAssignmentPattern(p))
 			}
 
 			properties = append(properties, prop)
 		}
 
-		if !accept(tCOMMA) {
-			expect(tCURLY_RIGHT)
+		if !accept(p, tCOMMA) {
+			expect(p, tCURLY_RIGHT)
 			break
 		}
 	}
@@ -605,20 +631,20 @@ func parseObjectPattern() astNode {
 	return makeNode(g_OBJECT_PATTERN, "", properties...)
 }
 
-func parseConditional() astNode {
-	test := parseBinary()
+func parseConditional(p *parserState) astNode {
+	test := parseBinary(p)
 
-	if accept(tQUESTION) {
-		consequent := parseConditional()
-		expect(tCOLON)
-		alternate := parseConditional()
+	if accept(p, tQUESTION) {
+		consequent := parseConditional(p)
+		expect(p, tCOLON)
+		alternate := parseConditional(p)
 		return makeNode(g_CONDITIONAL_EXPRESSION, "?", test, consequent, alternate)
 	}
 
 	return test
 }
 
-func parseBinary() astNode {
+func parseBinary(p *parserState) astNode {
 	opStack := make([]token, 0)
 	outputStack := make([]astNode, 0)
 	var root *astNode
@@ -634,10 +660,10 @@ func parseBinary() astNode {
 	}
 
 	for {
-		outputStack = append(outputStack, parsePrefixUnary())
+		outputStack = append(outputStack, parsePrefixUnary(p))
 
-		op, ok := operatorTable[tok.tType]
-		if !ok {
+		op, ok := operatorTable[p.tok.tType]
+		if !ok || (p.globalFlagIsInsideForIn && p.tok.tType == tIN) {
 			break
 		}
 
@@ -656,8 +682,8 @@ func parseBinary() astNode {
 				break
 			}
 		}
-		opStack = append(opStack, tok)
-		next()
+		opStack = append(opStack, p.tok)
+		next(p)
 	}
 
 	for i := len(opStack) - 1; i >= 0; i-- {
@@ -670,37 +696,37 @@ func parseBinary() astNode {
 	return outputStack[len(outputStack)-1]
 }
 
-func parsePrefixUnary() astNode {
-	if accept(
+func parsePrefixUnary(p *parserState) astNode {
+	if accept(p,
 		tNOT, tBITWISE_NOT, tPLUS, tMINUS,
 		tINC, tDEC, tTYPEOF, tVOID, tDELETE,
 	) {
 		return makeNode(
-			g_UNARY_PREFIX_EXPRESSION, getLexeme(), parsePostfixUnary(),
+			g_UNARY_PREFIX_EXPRESSION, getLexeme(p), parsePrefixUnary(p),
 		)
 	}
 
-	return parsePostfixUnary()
+	return parsePostfixUnary(p)
 }
 
-func parsePostfixUnary() astNode {
-	value := parseFunctionCallOrMember(false)
+func parsePostfixUnary(p *parserState) astNode {
+	value := parseFunctionCallOrMember(p, false)
 
-	if accept(tINC, tDEC) {
-		return makeNode(g_UNARY_POSTFIX_EXPRESSION, getLexeme(), value)
+	if accept(p, tINC, tDEC) {
+		return makeNode(g_UNARY_POSTFIX_EXPRESSION, getLexeme(p), value)
 	}
 
 	return value
 }
 
-func parseFunctionArgs() astNode {
+func parseFunctionArgs(p *parserState) astNode {
 	args := []astNode{}
 
-	for !accept(tPAREN_RIGHT) {
-		args = append(args, parseExpression())
+	for !accept(p, tPAREN_RIGHT) {
+		args = append(args, parseExpression(p))
 
-		if !accept(tCOMMA) {
-			expect(tPAREN_RIGHT)
+		if !accept(p, tCOMMA) {
+			expect(p, tPAREN_RIGHT)
 			break
 		}
 	}
@@ -710,23 +736,23 @@ func parseFunctionArgs() astNode {
 	return argsNode
 }
 
-func parseFunctionCallOrMember(onlyMember bool) astNode {
-	funcName := parseConstructorCall()
+func parseFunctionCallOrMember(p *parserState, onlyMember bool) astNode {
+	funcName := parseConstructorCall(p)
 
 	for {
-		if !onlyMember && accept(tPAREN_LEFT) {
-			argsNode := parseFunctionArgs()
+		if !onlyMember && accept(p, tPAREN_LEFT) {
+			argsNode := parseFunctionArgs(p)
 			n := makeNode(g_FUNCTION_CALL, "", funcName, argsNode)
 
 			funcName = n
 		} else {
 			var property astNode
 
-			if accept(tDOT) {
-				expect(tNAME)
-				property = makeNode(g_NAME, getLexeme())
-			} else if accept(tBRACKET_LEFT) {
-				property = parseCalculatedPropertyName()
+			if accept(p, tDOT) {
+				expect(p, tNAME)
+				property = makeNode(g_NAME, getLexeme(p))
+			} else if accept(p, tBRACKET_LEFT) {
+				property = parseCalculatedPropertyName(p)
 			} else {
 				break
 			}
@@ -740,113 +766,113 @@ func parseFunctionCallOrMember(onlyMember bool) astNode {
 	return funcName
 }
 
-func parseConstructorCall() astNode {
-	if accept(tNEW) {
-		name := parseFunctionCallOrMember(true)
-		if accept(tPAREN_LEFT) {
+func parseConstructorCall(p *parserState) astNode {
+	if accept(p, tNEW) {
+		name := parseFunctionCallOrMember(p, true)
+		if accept(p, tPAREN_LEFT) {
 			return makeNode(
-				g_CONSTRUCTOR_CALL, "", name, parseFunctionArgs(),
+				g_CONSTRUCTOR_CALL, "", name, parseFunctionArgs(p),
 			)
 		}
 		return makeNode(g_CONSTRUCTOR_CALL, "", name)
 	}
 
-	return parseAtom()
+	return parseAtom(p)
 }
 
-func parseAtom() astNode {
+func parseAtom(p *parserState) astNode {
 	switch {
-	case accept(tDIV):
-		return parseRegexp()
-	case accept(tHEX):
-		return makeNode(g_HEX_LITERAL, getLexeme())
-	case accept(tPAREN_LEFT):
-		return parseParensOrLambda()
-	case accept(tCURLY_LEFT):
-		return parseObjectLiteral()
-	case accept(tFUNCTION):
-		return parseFunctionExpression()
-	case accept(tBRACKET_LEFT):
-		return parseArrayLiteral()
-	case accept(tNAME):
-		return parseLambdaOrName()
-	case accept(tNUMBER):
-		return makeNode(g_NUMBER_LITERAL, getLexeme())
-	case accept(tSTRING):
-		return makeNode(g_STRING_LITERAL, getLexeme())
-	case accept(tNULL):
-		return makeNode(g_NULL, getLexeme())
-	case accept(tUNDEFINED):
-		return makeNode(g_UNDEFINED, getLexeme())
-	case accept(tTRUE, tFALSE):
-		return makeNode(g_BOOL_LITERAL, getLexeme())
-	case accept(tTHIS):
-		return makeNode(g_THIS, getLexeme())
+	case accept(p, tDIV):
+		return parseRegexp(p)
+	case accept(p, tHEX):
+		return makeNode(g_HEX_LITERAL, getLexeme(p))
+	case accept(p, tPAREN_LEFT):
+		return parseParensOrLambda(p)
+	case accept(p, tCURLY_LEFT):
+		return parseObjectLiteral(p)
+	case accept(p, tFUNCTION):
+		return parseFunctionExpression(p)
+	case accept(p, tBRACKET_LEFT):
+		return parseArrayLiteral(p)
+	case accept(p, tNAME):
+		return parseLambdaOrName(p)
+	case accept(p, tNUMBER):
+		return makeNode(g_NUMBER_LITERAL, getLexeme(p))
+	case accept(p, tSTRING):
+		return makeNode(g_STRING_LITERAL, getLexeme(p))
+	case accept(p, tNULL):
+		return makeNode(g_NULL, getLexeme(p))
+	case accept(p, tUNDEFINED):
+		return makeNode(g_UNDEFINED, getLexeme(p))
+	case accept(p, tTRUE, tFALSE):
+		return makeNode(g_BOOL_LITERAL, getLexeme(p))
+	case accept(p, tTHIS):
+		return makeNode(g_THIS, getLexeme(p))
 
 	default:
-		checkASI(tSEMI)
+		checkASI(p, tSEMI)
 	}
 	return astNode{}
 }
 
-func parseRegexp() astNode {
+func parseRegexp(p *parserState) astNode {
 	value := "/"
 	for {
-		if accept(tDIV) {
-			if sourceTokens[index-2].tType != tESCAPE {
+		if accept(p, tDIV) {
+			if p.sourceTokens[p.index-2].tType != tESCAPE {
 				break
 			} else {
-				value += getLexeme()
+				value += getLexeme(p)
 			}
 		}
-		next()
-		value += getLexeme()
+		next(p)
+		value += getLexeme(p)
 	}
 	value += "/"
-	if accept(tNAME) {
-		value += getLexeme()
+	if accept(p, tNAME) {
+		value += getLexeme(p)
 	}
-	fmt.Println(value)
+
 	return makeNode(g_REGEXP_LITERAL, value)
 }
 
-func parseParensOrLambda() astNode {
-	prevPos := index
+func parseParensOrLambda(p *parserState) astNode {
+	prevPos := p.index
 
-	params := parseFunctionParameters()
+	params := parseFunctionParameters(p)
 
-	if accept(tLAMBDA) {
+	if accept(p, tLAMBDA) {
 		var body astNode
-		if accept(tCURLY_LEFT) {
-			body = parseBlockStatement()
+		if accept(p, tCURLY_LEFT) {
+			body = parseBlockStatement(p)
 		} else {
-			body = parseYield()
+			body = parseYield(p)
 		}
 		return makeNode(g_LAMBDA_EXPRESSION, "", params, body)
 	}
 
-	backtrack(prevPos)
+	backtrack(p, prevPos)
 
 	var value astNode
-	if !accept(tPAREN_RIGHT) {
-		value = parseExpression()
-		expect(tPAREN_RIGHT)
+	if !accept(p, tPAREN_RIGHT) {
+		value = parseExpression(p)
+		expect(p, tPAREN_RIGHT)
 	}
 
 	return makeNode(g_PARENS_EXPRESSION, "", value)
 }
 
-func parseFunctionParameters() astNode {
-	startPos := index
+func parseFunctionParameters(p *parserState) astNode {
+	startPos := p.index
 
 	result := astNode{g_FUNCTION_PARAMETERS, "", nil, 0}
 	params := []astNode{}
-	for !accept(tPAREN_RIGHT) {
-		params = append(params, parseFunctionParameter())
+	for !accept(p, tPAREN_RIGHT) {
+		params = append(params, parseFunctionParameter(p))
 
-		if !accept(tCOMMA) {
-			if !accept(tPAREN_RIGHT) {
-				backtrack(startPos)
+		if !accept(p, tCOMMA) {
+			if !accept(p, tPAREN_RIGHT) {
+				backtrack(p, startPos)
 				return result
 			}
 			break
@@ -856,56 +882,56 @@ func parseFunctionParameters() astNode {
 	return result
 }
 
-func parseFunctionExpression() astNode {
+func parseFunctionExpression(p *parserState) astNode {
 	name := ""
-	if accept(tNAME) {
-		name = getLexeme()
+	if accept(p, tNAME) {
+		name = getLexeme(p)
 	}
 
-	expect(tPAREN_LEFT)
-	params := parseFunctionParameters()
-	expect(tCURLY_LEFT)
-	body := parseBlockStatement()
+	expect(p, tPAREN_LEFT)
+	params := parseFunctionParameters(p)
+	expect(p, tCURLY_LEFT)
+	body := parseBlockStatement(p)
 
 	return makeNode(g_FUNCTION_EXPRESSION, name, params, body)
 }
 
-func parseObjectLiteral() astNode {
+func parseObjectLiteral(p *parserState) astNode {
 	props := []astNode{}
 
-	for !accept(tCURLY_RIGHT) {
+	for !accept(p, tCURLY_RIGHT) {
 		prop := astNode{g_OBJECT_PROPERTY, "", []astNode{}, 0}
 		var key, value astNode
 
-		if tok.lexeme == "get" {
-			next()
-			prop.value = getLexeme()
-		} else if tok.lexeme == "set" {
-			next()
-			prop.value = getLexeme()
+		if getNoNewline(p).lexeme == "get" {
+			accept(p, tNAME)
+			prop.value = getLexeme(p)
+		} else if getNoNewline(p).lexeme == "set" {
+			accept(p, tNAME)
+			prop.value = getLexeme(p)
 		}
 
-		if accept(tNAME) {
-			key = makeNode(g_NAME, getLexeme())
-		} else if accept(tBRACKET_LEFT) {
-			key = parseCalculatedPropertyName()
-		} else if isValidPropertyName(getNoNewline().lexeme) || test(tNUMBER, tSTRING) {
-			accept()
-			key = makeNode(g_VALID_PROPERTY_NAME, getLexeme())
+		if accept(p, tNAME) {
+			key = makeNode(g_NAME, getLexeme(p))
+		} else if accept(p, tBRACKET_LEFT) {
+			key = parseCalculatedPropertyName(p)
+		} else if isValidPropertyName(getNoNewline(p).lexeme) || test(p, tNUMBER, tSTRING) {
+			accept(p)
+			key = makeNode(g_VALID_PROPERTY_NAME, getLexeme(p))
 		}
 		prop.children = append(prop.children, key)
 
-		if test(tPAREN_LEFT) {
-			value = parseMemberFunction()
+		if test(p, tPAREN_LEFT) {
+			value = parseMemberFunction(p)
 			prop.children = append(prop.children, value)
-		} else if accept(tCOLON) {
-			value = parseYield()
+		} else if accept(p, tCOLON) {
+			value = parseYield(p)
 			prop.children = append(prop.children, value)
 		}
 
 		props = append(props, prop)
-		if !accept(tCOMMA) {
-			expect(tCURLY_RIGHT)
+		if !accept(p, tCOMMA) {
+			expect(p, tCURLY_RIGHT)
 			break
 		}
 	}
@@ -913,20 +939,20 @@ func parseObjectLiteral() astNode {
 	return makeNode(g_OBJECT_LITERAL, "", props...)
 }
 
-func parseMemberFunction() astNode {
-	f := parseFunctionExpression()
+func parseMemberFunction(p *parserState) astNode {
+	f := parseFunctionExpression(p)
 	f.t = g_MEMBER_FUNCTION
 	return f
 }
 
-func parseArrayLiteral() astNode {
+func parseArrayLiteral(p *parserState) astNode {
 	values := []astNode{}
 
-	for !accept(tBRACKET_RIGHT) {
-		values = append(values, parseYield())
+	for !accept(p, tBRACKET_RIGHT) {
+		values = append(values, parseYield(p))
 
-		if !accept(tCOMMA) {
-			expect(tBRACKET_RIGHT)
+		if !accept(p, tCOMMA) {
+			expect(p, tBRACKET_RIGHT)
 			break
 		}
 	}
@@ -934,15 +960,15 @@ func parseArrayLiteral() astNode {
 	return makeNode(g_ARRAY_LITERAL, "", values...)
 }
 
-func parseLambdaOrName() astNode {
-	firstParamStr := getLexeme()
+func parseLambdaOrName(p *parserState) astNode {
+	firstParamStr := getLexeme(p)
 
-	if accept(tLAMBDA) {
+	if accept(p, tLAMBDA) {
 		var body astNode
-		if accept(tCURLY_LEFT) {
-			body = parseBlockStatement()
+		if accept(p, tCURLY_LEFT) {
+			body = parseBlockStatement(p)
 		} else {
-			body = parseYield()
+			body = parseYield(p)
 		}
 		params := makeNode(
 			g_FUNCTION_PARAMETERS, "",
@@ -956,115 +982,136 @@ func parseLambdaOrName() astNode {
 	return makeNode(g_NAME, firstParamStr)
 }
 
-func parseBlockStatement() astNode {
+func parseBlockStatement(p *parserState) astNode {
 	statements := []astNode{}
-	for !accept(tCURLY_RIGHT) {
-		statements = append(statements, parseStatement())
+	for !accept(p, tCURLY_RIGHT) {
+		statements = append(statements, parseStatement(p))
 	}
 	return makeNode(g_BLOCK_STATEMENT, "", statements...)
 }
 
-func parseFunctionParameter() astNode {
-	if accept(tSPREAD) {
+func parseFunctionParameter(p *parserState) astNode {
+	if accept(p, tSPREAD) {
 		var left astNode
-		if accept(tCURLY_LEFT) {
-			left = parseObjectPattern()
-		} else if accept(tNAME) {
-			left = makeNode(g_NAME, getLexeme())
+		if accept(p, tCURLY_LEFT) {
+			left = parseObjectPattern(p)
+		} else if accept(p, tNAME) {
+			left = makeNode(g_NAME, getLexeme(p))
 		}
 		n := makeNode(g_FUNCTION_PARAMETER, "", left)
 		n.flags = f_FUNCTION_PARAM_REST
 		return n
 	}
 
-	n := parseDeclarator()
+	n := parseDeclarator(p)
 	n.t = g_FUNCTION_PARAMETER
 	return n
 }
 
-func parseDeclarator() astNode {
+func parseDeclarator(p *parserState) astNode {
 	var left astNode
-	if accept(tCURLY_LEFT) {
-		left = parseObjectPattern()
-	} else if accept(tNAME, tFROM) {
-		left = makeNode(g_NAME, getLexeme())
+	if accept(p, tCURLY_LEFT) {
+		left = parseObjectPattern(p)
+	} else if accept(p, tNAME) {
+		left = makeNode(g_NAME, getLexeme(p))
 	} else {
 		return left
 		//checkASI(tSEMI)
 	}
 
-	if accept(tASSIGN) {
-		right := parseAssignment()
+	if accept(p, tASSIGN) {
+		right := parseAssignment(p)
 		return makeNode(g_DECLARATOR, "", left, right)
 	}
 
 	return makeNode(g_DECLARATOR, "", left)
 }
 
-func parseCalculatedPropertyName() astNode {
-	value := parseExpression()
-	expect(tBRACKET_RIGHT)
+func parseCalculatedPropertyName(p *parserState) astNode {
+	value := parseExpression(p)
+	expect(p, tBRACKET_RIGHT)
 	return makeNode(g_CALCULATED_PROPERTY_NAME, "", value)
 }
 
-func parseImportStatement() astNode {
+func parseImportStatement(p *parserState) astNode {
 	vars := astNode{g_IMPORT_VARS, "", []astNode{}, 0}
 	all := astNode{t: g_IMPORT_ALL}
 	path := astNode{t: g_IMPORT_PATH}
 
-	if accept(tMULT) {
-		expect(tAS)
-		expect(tNAME)
-		all.value = getLexeme()
-		expect(tFROM)
+	if accept(p, tMULT) {
+		expect(p, tNAME)
+		if getLexeme(p) != "as" {
+			checkASI(p, tSEMI)
+		}
+		expect(p, tNAME)
+		all.value = getLexeme(p)
+
+		expect(p, tNAME)
+		if getLexeme(p) != "from" {
+			checkASI(p, tSEMI)
+		}
 	} else {
-		if accept(tNAME) {
+		if accept(p, tNAME) {
 			name := makeNode(g_IMPORT_NAME, "default")
-			alias := makeNode(g_IMPORT_ALIAS, getLexeme())
+			alias := makeNode(g_IMPORT_ALIAS, getLexeme(p))
 
 			varNode := makeNode(g_IMPORT_VAR, "", name, alias)
 			vars.children = append(vars.children, varNode)
 
-			if accept(tCOMMA) {
-				if accept(tMULT) {
-					expect(tAS)
-					expect(tNAME)
-					all.value = getLexeme()
-					expect(tFROM)
+			if accept(p, tCOMMA) {
+				if accept(p, tMULT) {
+					expect(p, tNAME)
+					if getLexeme(p) != "as" {
+						checkASI(p, tSEMI)
+					}
+
+					expect(p, tNAME)
+					all.value = getLexeme(p)
+
+					expect(p, tNAME)
+					if getLexeme(p) != "from" {
+						checkASI(p, tSEMI)
+					}
 				}
 			} else {
-				expect(tFROM)
+				expect(p, tNAME)
+				if getLexeme(p) != "from" {
+					checkASI(p, tSEMI)
+				}
 			}
 		}
 
-		if accept(tCURLY_LEFT) {
-			for !accept(tCURLY_RIGHT) {
-				if accept(tNAME, tDEFAULT) {
-					name := makeNode(g_IMPORT_NAME, getLexeme())
-					alias := makeNode(g_IMPORT_ALIAS, getLexeme())
+		if accept(p, tCURLY_LEFT) {
+			for !accept(p, tCURLY_RIGHT) {
+				if accept(p, tNAME, tDEFAULT) {
+					name := makeNode(g_IMPORT_NAME, getLexeme(p))
+					alias := makeNode(g_IMPORT_ALIAS, getLexeme(p))
 
-					if accept(tAS) {
-						expect(tNAME)
-						alias = makeNode(g_IMPORT_ALIAS, getLexeme())
+					if accept(p, tNAME) && getLexeme(p) == "as" {
+						expect(p, tNAME)
+						alias = makeNode(g_IMPORT_ALIAS, getLexeme(p))
 					}
 
 					varNode := makeNode(g_IMPORT_VAR, "", name, alias)
 					vars.children = append(vars.children, varNode)
 				}
 
-				if !accept(tCOMMA) {
-					expect(tCURLY_RIGHT)
+				if !accept(p, tCOMMA) {
+					expect(p, tCURLY_RIGHT)
 					break
 				}
 			}
 
-			expect(tFROM)
+			expect(p, tNAME)
+			if getLexeme(p) != "from" {
+				checkASI(p, tSEMI)
+			}
 		}
 	}
 
-	expect(tSTRING)
-	path.value = getLexeme()
-	expect(tSEMI)
+	expect(p, tSTRING)
+	path.value = getLexeme(p)
+	expect(p, tSEMI)
 
 	return makeNode(g_IMPORT_STATEMENT, "", vars, all, path)
 }

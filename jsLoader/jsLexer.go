@@ -137,7 +137,7 @@ func lex(src []byte) []token {
 		case isStringParen(c):
 			startSymbol := c
 			eat(tSTRING)
-			for c != startSymbol {
+			for !(c == startSymbol && src[i-1] != '\\') {
 				eat(tSTRING)
 			}
 			eat(tSTRING)

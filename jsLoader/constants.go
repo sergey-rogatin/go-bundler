@@ -51,9 +51,9 @@ var keywords = map[string]tokenType{
 	"null":       tNULL,
 	"true":       tTRUE,
 	"false":      tFALSE,
-	"as":         tAS,
-	"from":       tFROM,
-	"of":         tOF,
+	// "as":         tAS,
+	// "from":       tFROM,
+	// "of":         tOF,
 }
 
 var operators = map[string]tokenType{
@@ -165,9 +165,9 @@ const (
 	tNULL
 	tTRUE
 	tFALSE
-	tAS
-	tFROM
-	tOF
+	// tAS
+	// tFROM
+	// tOF
 
 	tBITWISE_NOT
 	tBITWISE_AND
@@ -281,9 +281,9 @@ var tokenTypeNames = []string{
 	"tNULL",
 	"tTRUE",
 	"tFALSE",
-	"tAS",
-	"tFROM",
-	"tOF",
+	// "tAS",
+	// "tFROM",
+	// "tOF",
 	"tBITWISE_NOT",
 	"tBITWISE_AND",
 	"tBITWISE_OR",
@@ -425,6 +425,7 @@ var grammarTypeToString = []string{
 	"g_HEX_LITERAL",
 	"g_REGEXP_LITERAL",
 	"g_CONDITIONAL_EXPRESSION",
+	"g_MARKER",
 }
 
 func (g grammarType) String() string {
@@ -509,6 +510,7 @@ const (
 	g_TRY_CATCH_STATEMENT
 	g_THROW_STATEMENT
 	g_CONDITIONAL_EXPRESSION
+	g_MARKER
 )
 
 type operatorInfo struct {
@@ -543,6 +545,7 @@ var operatorTable = map[tokenType]operatorInfo{
 	tGREATER:                         operatorInfo{11, false},
 	tGREATER_EQUALS:                  operatorInfo{11, false},
 	tINSTANCEOF:                      operatorInfo{11, false},
+	tIN:                              operatorInfo{11, false},
 	tBITWISE_SHIFT_LEFT:              operatorInfo{12, false},
 	tBITWISE_SHIFT_RIGHT:             operatorInfo{12, false},
 	tBITWISE_SHIFT_RIGHT_ZERO:        operatorInfo{12, false},

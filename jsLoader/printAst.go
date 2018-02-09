@@ -84,7 +84,11 @@ func printAst(n astNode) string {
 
 	case g_EXPRESSION:
 		result := printAst(n.children[0]) // left
-		result += n.value                 // operator
+		if n.value == "in" || n.value == "instanceof" {
+			result += " " + n.value + " "
+		} else {
+			result += n.value // operator
+		}
 		result += printAst(n.children[1]) // right
 
 		return result
@@ -134,7 +138,11 @@ func printAst(n astNode) string {
 
 	case g_UNARY_PREFIX_EXPRESSION:
 		result := n.value
-		result += printAst(n.children[0]) // value
+		if n.value == "typeof" || n.value == "void" || n.value == "delete" {
+			result += " " + printAst(n.children[0]) + " "
+		} else {
+			result += printAst(n.children[0]) // value
+		}
 
 		return result
 
@@ -486,6 +494,9 @@ func printAst(n astNode) string {
 
 	case g_CONDITIONAL_EXPRESSION:
 		return printAst(n.children[0]) + "?" + printAst(n.children[1]) + ":" + printAst(n.children[2])
+
+	case g_MARKER:
+		return n.value + ":"
 	}
 
 	return ""

@@ -249,6 +249,7 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 func CreateVarNameFromPath(path string) string {
 	newName := strings.Replace(path, "/", "_", -1)
 	newName = strings.Replace(newName, ".", "_", -1)
+	newName = strings.Replace(newName, "-", "_", -1)
 	return newName
 }
 
