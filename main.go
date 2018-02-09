@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -42,31 +43,37 @@ func (sf *safeFile) close() {
 }
 
 type fileCache struct {
-	data           []byte
-	lastModTime    time.Time
-	imports        []string
-	isReachable    bool
-	isBeingBundled bool
+	Data        []byte
+	LastModTime time.Time
+	Imports     []string
+	IsReachable bool
 }
 
 type bundleCache struct {
-	files map[string]fileCache
-	lock  sync.RWMutex
+	Files map[string]fileCache
+	Lock  sync.RWMutex
+}
+
+func (c *bundleCache) getLength() int {
+	c.Lock.RLock()
+	defer c.Lock.RUnlock()
+	res := len(c.Files)
+	return res
 }
 
 func (c *bundleCache) read(fileName string) (fileCache, bool) {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
+	c.Lock.RLock()
+	defer c.Lock.RUnlock()
 
-	file, ok := c.files[fileName]
+	file, ok := c.Files[fileName]
 	return file, ok
 }
 
 func (c *bundleCache) write(fileName string, data fileCache) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	c.Lock.Lock()
+	defer c.Lock.Unlock()
 
-	c.files[fileName] = data
+	c.Files[fileName] = data
 }
 
 type configJSON struct {
@@ -110,9 +117,13 @@ func main() {
 	// creating bundle
 	bundleName := filepath.Join(config.BundleDir, "bundle.js")
 
-	cache := bundleCache{}
-	cache.files = make(map[string]fileCache)
-	createBundle(config.Entry, bundleName, &cache)
+	cache := loadCacheFromFile()
+	if cache == nil {
+		cache = &bundleCache{}
+		cache.Files = make(map[string]fileCache)
+	}
+
+	createBundle(config.Entry, bundleName, cache)
 
 	if config.TemplateHTML != "" {
 		bundleHTMLTemplate(config.TemplateHTML, bundleName)
@@ -121,15 +132,24 @@ func main() {
 	// dev server and watching files
 	if config.DevServer.Enable {
 		if config.WatchFiles {
-			go watchBundledFiles(&cache, config.Entry, bundleName)
+			go watchBundledFiles(cache, config.Entry, bundleName)
 		}
 		fmt.Printf("Dev server listening at port %v\n", config.DevServer.Port)
 		server := http.FileServer(http.Dir(config.BundleDir))
 		err := http.ListenAndServe(fmt.Sprintf(":%v", config.DevServer.Port), server)
 		log.Fatal(err)
 	} else if config.WatchFiles {
-		watchBundledFiles(&cache, config.Entry, bundleName)
+		watchBundledFiles(cache, config.Entry, bundleName)
 	}
+}
+
+func indexOf(arr []string, str string) int {
+	for i, item := range arr {
+		if item == str {
+			return i
+		}
+	}
+	return -1
 }
 
 func createBundle(entryFileName, bundleFileName string, cache *bundleCache) {
@@ -142,17 +162,94 @@ func createBundle(entryFileName, bundleFileName string, cache *bundleCache) {
 
 	// mark all files as unreachable at the start of the build
 	// so the autorebuilder does not try to rebuild when they change
-	for fileName, file := range cache.files {
-		file.isReachable = false
-		cache.files[fileName] = file
+	for fileName, file := range cache.Files {
+		file.IsReachable = false
+		cache.Files[fileName] = file
 	}
 
+	sf.write([]byte("var moduleFns={},modules={};var process={env:{NODE_ENV:'development'}};"))
 	err := addFilesToBundle([]string{entryFileName}, sf, cache)
+	sf.write(getJsBundleFileTail(entryFileName, cache))
+
+	go saveCacheToFile(cache)
+
 	if err == nil {
 		fmt.Printf("\n>>Build finished in %s\n", time.Since(buildStartTime))
 	} else {
 		fmt.Printf("\n>>%s\n", err)
 	}
+}
+
+func getJsBundleFileTail(entryFileName string, cache *bundleCache) []byte {
+	moduleOrder := []string{}
+
+	var createImportTree func(string, []string)
+	createImportTree = func(fileName string, path []string) {
+		if filepath.Ext(fileName) != ".js" {
+			return
+		}
+
+		if i := indexOf(path, fileName); i >= 0 {
+			fmt.Printf(
+				"\n>>Warning: circular dependency detected:\n%s\n",
+				strings.Join(append(path[i:], fileName), " -> "),
+			)
+			return
+		}
+
+		file := cache.Files[fileName]
+		for _, importPath := range file.Imports {
+			createImportTree(importPath, append(path, fileName))
+		}
+
+		moduleName := "'" + jsLoader.CreateVarNameFromPath(fileName) + "'"
+		if indexOf(moduleOrder, moduleName) < 0 {
+			moduleOrder = append(moduleOrder, moduleName)
+		}
+	}
+
+	createImportTree(entryFileName, []string{})
+	jsModuleOrder := fmt.Sprintf("var moduleOrder = [%s];", strings.Join(moduleOrder, ","))
+	result := []byte(jsModuleOrder + "moduleOrder.forEach((moduleName)=>modules[moduleName]=moduleFns[moduleName]())")
+
+	return result
+}
+
+func saveCacheToFile(cache *bundleCache) {
+	saveFile, err := os.Create(".bundlecache")
+	if err != nil {
+		fmt.Println("Error: cannot create save file for cache!")
+		return
+	}
+	defer saveFile.Close()
+
+	enc := gob.NewEncoder(saveFile)
+	err = enc.Encode(cache.Files)
+	if err != nil {
+		fmt.Println("Error: cannot save cache to file!")
+	}
+}
+
+func loadCacheFromFile() *bundleCache {
+	saveFile, err := os.Open(".bundlecache")
+	if err != nil {
+		return nil
+	}
+	defer saveFile.Close()
+
+	dec := gob.NewDecoder(saveFile)
+
+	result := bundleCache{}
+	var files map[string]fileCache
+
+	err = dec.Decode(&files)
+	if err != nil {
+		fmt.Println("Error: cache file is corrupted!")
+		return nil
+	}
+
+	result.Files = files
+	return &result
 }
 
 func addFilesToBundle(
@@ -195,14 +292,19 @@ func addFileToBundle(
 	var fileImports []string
 	var lastModTime time.Time
 
-	cachedFile, ok := cache.read(resolvedPath)
-	if ok {
-		// fmt.Printf("%s is already bundled\n", resolvedPath)
+	cache.Lock.Lock()
+	cachedFile, ok := cache.Files[resolvedPath]
+	if ok && cachedFile.IsReachable {
 		errorCh <- nil
+		cache.Lock.Unlock()
 		return
 	}
+	cache.Files[resolvedPath] = fileCache{
+		LastModTime: lastModTime,
+		IsReachable: true,
+	}
+	cache.Lock.Unlock()
 
-	ext := filepath.Ext(resolvedPath)
 	fileStats, err := os.Stat(resolvedPath)
 	if err != nil {
 		errorCh <- fileError{"cannot find file", resolvedPath}
@@ -210,10 +312,12 @@ func addFileToBundle(
 	}
 	lastModTime = fileStats.ModTime()
 
-	if ok && cachedFile.lastModTime == fileStats.ModTime() {
-		data = cachedFile.data
-		fileImports = cachedFile.imports
+	if ok && cachedFile.LastModTime == fileStats.ModTime() {
+		data = cachedFile.Data
+		fileImports = cachedFile.Imports
 	} else {
+		ext := filepath.Ext(resolvedPath)
+
 		//fmt.Printf("Loading %s\n", resolvedPath)
 		switch ext {
 		case ".js":
@@ -222,6 +326,7 @@ func addFileToBundle(
 				errorCh <- err
 				return
 			}
+
 			data, fileImports, err = jsLoader.LoadFile(src, resolvedPath)
 			if err != nil {
 				errorCh <- err
@@ -235,15 +340,15 @@ func addFileToBundle(
 		}
 	}
 
+	bundleSf.write(data)
 	cache.write(resolvedPath, fileCache{
-		data:        data,
-		imports:     fileImports,
-		lastModTime: lastModTime,
-		isReachable: true,
+		Data:        data,
+		Imports:     fileImports,
+		LastModTime: lastModTime,
+		IsReachable: true,
 	})
 
 	err = addFilesToBundle(fileImports, bundleSf, cache)
-	bundleSf.write(data)
 	errorCh <- err
 }
 
@@ -293,8 +398,8 @@ func watchBundledFiles(
 
 	checkFiles := func() {
 		for running {
-			for path, file := range cache.files {
-				if !file.isReachable {
+			for path, file := range cache.Files {
+				if !file.IsReachable {
 					continue
 				}
 
@@ -302,7 +407,7 @@ func watchBundledFiles(
 				if err != nil {
 					continue
 				}
-				if file.lastModTime != stats.ModTime() {
+				if file.LastModTime != stats.ModTime() {
 					createBundle(entryName, bundleName, cache)
 					break
 				}

@@ -1016,7 +1016,6 @@ func parseDeclarator(p *parserState) astNode {
 		left = makeNode(g_NAME, getLexeme(p))
 	} else {
 		return left
-		//checkASI(tSEMI)
 	}
 
 	if accept(p, tASSIGN) {
