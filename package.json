@@ -3,7 +3,7 @@
   "bin": {
     "go-bundler": "bin/goBundler.exe"
   },
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "",
   "directories": {
     "test": "test"
@@ -15,13 +15,7 @@
     "type": "git",
     "url": "git+https://github.com/lvl5hm/go-bundler.git"
   },
-  "keywords": [
-    "golang",
-    "go",
-    "bundler",
-    "bundle",
-    "js"
-  ],
+  "keywords": ["golang", "go", "bundler", "bundle", "js"],
   "author": "lvl5hm",
   "license": "ISC",
   "bugs": {
