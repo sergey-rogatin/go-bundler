@@ -239,6 +239,8 @@ func parseStatement(p *parserState) ast {
 	}
 
 	switch {
+	case accept(p, tCLASS):
+		return makeNode(g_CLASS_STATEMENT, "", parseClassExpression(p))
 	case accept(p, tTHROW):
 		return makeNode(g_THROW_STATEMENT, "", parseExpression(p))
 	case accept(p, tTRY):
@@ -647,6 +649,53 @@ func parseArrayPattern(p *parserState) ast {
 	return makeNode(g_ARRAY_PATTERN, "", properties...)
 }
 
+func parseClassExpression(p *parserState) ast {
+	var name, extends, body ast
+
+	if accept(p, tNAME) {
+		name = makeNode(g_NAME, getLexeme(p))
+	}
+
+	if accept(p, tEXTENDS) {
+		extends = parseYield(p)
+	}
+
+	expect(p, tCURLY_LEFT)
+
+	props := []ast{}
+
+	for !accept(p, tCURLY_RIGHT) {
+		isStatic := false
+
+		if accept(p, tSTATIC) {
+			isStatic = true
+		}
+
+		if accept(p, tNAME) {
+			name := makeNode(g_NAME, getLexeme(p))
+			var prop ast
+
+			if test(p, tPAREN_LEFT) {
+				prop = makeNode(g_CLASS_METHOD, "", name, parseMemberFunction(p))
+			} else if accept(p, tASSIGN) {
+				prop = makeNode(g_CLASS_PROPERTY, "", name, parseExpression(p))
+			} else {
+				prop = makeNode(g_CLASS_PROPERTY, "", name)
+			}
+
+			if isStatic {
+				prop = makeNode(g_CLASS_STATIC_PROP, "", prop)
+			}
+			props = append(props, prop)
+
+			expect(p, tSEMI)
+		}
+	}
+	body = makeNode(g_BLOCK_STATEMENT, "", props...)
+
+	return makeNode(g_CLASS_EXPRESSION, "", name, extends, body)
+}
+
 func parseObjectPattern(p *parserState) ast {
 	properties := []ast{}
 	for !accept(p, tCURLY_RIGHT) {
@@ -836,6 +885,8 @@ func parseConstructorCall(p *parserState) ast {
 
 func parseAtom(p *parserState) ast {
 	switch {
+	case accept(p, tCLASS):
+		return parseClassExpression(p)
 	case accept(p, tDIV):
 		return parseRegexp(p)
 	case accept(p, tHEX):

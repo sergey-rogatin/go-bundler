@@ -488,6 +488,44 @@ func generateJsCode(n ast) string {
 
 	case g_REST_EXPRESSION, g_SPREAD_EXPRESSION:
 		return "..." + generateJsCode(n.children[0])
+
+	case g_CLASS_STATEMENT:
+		return generateJsCode(n.children[0])
+
+	case g_CLASS_EXPRESSION:
+		result := "class"
+		name := n.children[0]
+		if name.value != "" {
+			result += " " + generateJsCode(n.children[0])
+		}
+		extends := n.children[1]
+		if extends.t != g_UNDEFINED {
+			result += " extends " + generateJsCode(extends)
+		}
+
+		body := n.children[2]
+		result += generateJsCode(body)
+
+		return result
+
+	case g_CLASS_METHOD:
+		result := ""
+		result += generateJsCode(n.children[0]) // name
+		result += generateJsCode(n.children[1]) // args and body
+
+		return result
+
+	case g_CLASS_PROPERTY:
+		result := generateJsCode(n.children[0])
+		if len(n.children) > 1 {
+			result += "=" + generateJsCode(n.children[1])
+		}
+
+		return result + ";"
+
+	case g_CLASS_STATIC_PROP:
+		return "static " + generateJsCode(n.children[0])
+
 	}
 
 	return ""

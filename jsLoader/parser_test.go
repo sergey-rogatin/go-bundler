@@ -989,3 +989,46 @@ func TestArrayPattern(t *testing.T) {
 		}
 	}
 }
+
+func TestClass(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			"class foo extends bar {}",
+			"class foo extends bar{}",
+		},
+		{
+			"class foo{bar(){}}",
+			"class foo{bar(){}}",
+		},
+		{
+			"class foo{a = fsa; b;static c;}",
+			"class foo{a=fsa;b;static c;}",
+		},
+		{
+			"class foo{static foo = () => {}}",
+			"class foo{static foo=()=>{};}",
+		},
+		{
+			"var foo = class foo{};",
+			"var foo=class foo{};",
+		},
+		{
+			"var foo = class{};",
+			"var foo=class{};",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := parseStatement(&ps)
+
+		act := generateJsCode(le)
+		if act != c.res {
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
+		}
+	}
+}

@@ -350,6 +350,7 @@ func (t tokenType) String() string {
 type grammarType int
 
 var grammarTypeToString = []string{
+	"g_UNDEFINED",
 	"g_INVALID_GRAMMAR",
 	"g_PROGRAM_STATEMENT",
 	"g_RETURN_STATEMENT",
@@ -408,7 +409,6 @@ var grammarTypeToString = []string{
 	"g_EXPORT_ALL",
 	"g_NUMBER_LITERAL",
 	"g_STRING_LITERAL",
-	"g_UNDEFINED",
 	"g_NULL",
 	"g_BOOL_LITERAL",
 	"g_THIS",
@@ -424,11 +424,18 @@ var grammarTypeToString = []string{
 	"g_MULTISTATEMENT",
 	"g_HEX_LITERAL",
 	"g_REGEXP_LITERAL",
+	"g_TRY_CATCH_STATEMENT",
+	"g_THROW_STATEMENT",
 	"g_CONDITIONAL_EXPRESSION",
 	"g_MARKER",
 	"g_REST_EXPRESSION",
 	"g_SPREAD_EXPRESSION",
-	"wuuuut",
+	"g_CLASS_EXPRESSION",
+	"g_CLASS_MEMBER",
+	"g_CLASS_METHOD",
+	"g_CLASS_STATIC_PROP",
+	"g_CLASS_PROPERTY",
+	"g_CLASS_STATEMENT",
 }
 
 func (g grammarType) String() string {
@@ -436,7 +443,8 @@ func (g grammarType) String() string {
 }
 
 const (
-	g_INVALID_GRAMMAR grammarType = iota
+	g_UNDEFINED grammarType = iota
+	g_INVALID_GRAMMAR
 	g_PROGRAM_STATEMENT
 	g_RETURN_STATEMENT
 	g_EXPRESSION_STATEMENT
@@ -494,7 +502,6 @@ const (
 	g_EXPORT_ALL
 	g_NUMBER_LITERAL
 	g_STRING_LITERAL
-	g_UNDEFINED
 	g_NULL
 	g_BOOL_LITERAL
 	g_THIS
@@ -516,6 +523,12 @@ const (
 	g_MARKER
 	g_REST_EXPRESSION
 	g_SPREAD_EXPRESSION
+	g_CLASS_EXPRESSION
+	g_CLASS_MEMBER
+	g_CLASS_METHOD
+	g_CLASS_STATIC_PROP
+	g_CLASS_PROPERTY
+	g_CLASS_STATEMENT
 )
 
 type operatorInfo struct {
