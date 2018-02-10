@@ -426,6 +426,9 @@ var grammarTypeToString = []string{
 	"g_REGEXP_LITERAL",
 	"g_CONDITIONAL_EXPRESSION",
 	"g_MARKER",
+	"g_REST_EXPRESSION",
+	"g_SPREAD_EXPRESSION",
+	"wuuuut",
 }
 
 func (g grammarType) String() string {
@@ -511,6 +514,8 @@ const (
 	g_THROW_STATEMENT
 	g_CONDITIONAL_EXPRESSION
 	g_MARKER
+	g_REST_EXPRESSION
+	g_SPREAD_EXPRESSION
 )
 
 type operatorInfo struct {

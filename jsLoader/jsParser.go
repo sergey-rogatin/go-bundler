@@ -602,6 +602,7 @@ func parseAssignment(p *parserState) ast {
 
 func parseAssignmentPattern(p *parserState) ast {
 	var left ast
+
 	if accept(p, tBRACKET_LEFT) {
 		left = parseArrayPattern(p)
 	} else if accept(p, tCURLY_LEFT) {
@@ -613,7 +614,7 @@ func parseAssignmentPattern(p *parserState) ast {
 	}
 
 	if accept(p, tASSIGN) {
-		right := parseExpression(p)
+		right := parseYield(p)
 		return makeNode(g_ASSIGNMENT_PATTERN, "=", left, right)
 	}
 
@@ -636,7 +637,9 @@ func parseArrayPattern(p *parserState) ast {
 		properties = append(properties, prop)
 
 		if !accept(p, tCOMMA) {
-			expect(p, tBRACKET_RIGHT)
+			if !accept(p, tBRACKET_RIGHT) {
+				return makeNode(g_INVALID_GRAMMAR, "")
+			}
 			break
 		}
 	}
@@ -647,7 +650,15 @@ func parseArrayPattern(p *parserState) ast {
 func parseObjectPattern(p *parserState) ast {
 	properties := []ast{}
 	for !accept(p, tCURLY_RIGHT) {
-		if accept(p, tNAME) {
+		if accept(p, tSPREAD) {
+			if !accept(p, tNAME) {
+				return makeNode(g_INVALID_GRAMMAR, "")
+			}
+			name := makeNode(g_NAME, getLexeme(p))
+			properties = append(
+				properties, makeNode(g_REST_EXPRESSION, "", name),
+			)
+		} else if accept(p, tNAME) {
 			prop := makeNode(g_OBJECT_PROPERTY, "", []ast{}...)
 			key := makeNode(g_NAME, getLexeme(p))
 			prop.children = append(prop.children, key)
@@ -946,30 +957,35 @@ func parseObjectLiteral(p *parserState) ast {
 		prop := ast{g_OBJECT_PROPERTY, "", []ast{}, 0}
 		var key, value ast
 
-		if getNoNewline(p).lexeme == "get" {
-			accept(p, tNAME)
-			prop.value = getLexeme(p)
-		} else if getNoNewline(p).lexeme == "set" {
-			accept(p, tNAME)
-			prop.value = getLexeme(p)
-		}
+		if accept(p, tSPREAD) {
+			expr := parseYield(p)
+			prop = makeNode(g_SPREAD_EXPRESSION, "", expr)
+		} else {
+			if getNoNewline(p).lexeme == "get" {
+				accept(p, tNAME)
+				prop.value = getLexeme(p)
+			} else if getNoNewline(p).lexeme == "set" {
+				accept(p, tNAME)
+				prop.value = getLexeme(p)
+			}
 
-		if accept(p, tNAME) {
-			key = makeNode(g_NAME, getLexeme(p))
-		} else if accept(p, tBRACKET_LEFT) {
-			key = parseCalculatedPropertyName(p)
-		} else if isValidPropertyName(getNoNewline(p).lexeme) || test(p, tNUMBER, tSTRING) {
-			accept(p)
-			key = makeNode(g_VALID_PROPERTY_NAME, getLexeme(p))
-		}
-		prop.children = append(prop.children, key)
+			if accept(p, tNAME) {
+				key = makeNode(g_NAME, getLexeme(p))
+			} else if accept(p, tBRACKET_LEFT) {
+				key = parseCalculatedPropertyName(p)
+			} else if isValidPropertyName(getNoNewline(p).lexeme) || test(p, tNUMBER, tSTRING) {
+				accept(p)
+				key = makeNode(g_VALID_PROPERTY_NAME, getLexeme(p))
+			}
+			prop.children = append(prop.children, key)
 
-		if test(p, tPAREN_LEFT) {
-			value = parseMemberFunction(p)
-			prop.children = append(prop.children, value)
-		} else if accept(p, tCOLON) {
-			value = parseYield(p)
-			prop.children = append(prop.children, value)
+			if test(p, tPAREN_LEFT) {
+				value = parseMemberFunction(p)
+				prop.children = append(prop.children, value)
+			} else if accept(p, tCOLON) {
+				value = parseYield(p)
+				prop.children = append(prop.children, value)
+			}
 		}
 
 		props = append(props, prop)
@@ -996,7 +1012,14 @@ func parseArrayLiteral(p *parserState) ast {
 			values = append(values, makeNode(g_EMPTY_EXPRESSION, ""))
 			continue
 		}
-		values = append(values, parseYield(p))
+		if accept(p, tSPREAD) {
+			values = append(
+				values,
+				makeNode(g_SPREAD_EXPRESSION, "", parseYield(p)),
+			)
+		} else {
+			values = append(values, parseYield(p))
+		}
 
 		if !accept(p, tCOMMA) {
 			expect(p, tBRACKET_RIGHT)
@@ -1019,9 +1042,7 @@ func parseLambdaOrName(p *parserState) ast {
 		}
 		params := makeNode(
 			g_FUNCTION_PARAMETERS, "",
-			makeNode(
-				g_FUNCTION_PARAMETER, "", makeNode(g_NAME, firstParamStr),
-			),
+			makeNode(g_NAME, firstParamStr),
 		)
 		return makeNode(g_LAMBDA_EXPRESSION, "", params, body)
 	}
@@ -1039,19 +1060,17 @@ func parseBlockStatement(p *parserState) ast {
 
 func parseFunctionParameter(p *parserState) ast {
 	if accept(p, tSPREAD) {
-		var left ast
-		if accept(p, tCURLY_LEFT) {
-			left = parseObjectPattern(p)
+		var expr ast
+		if accept(p, tBRACKET_LEFT) {
+			expr = parseArrayPattern(p)
+		} else if accept(p, tCURLY_LEFT) {
+			expr = parseObjectPattern(p)
 		} else if accept(p, tNAME) {
-			left = makeNode(g_NAME, getLexeme(p))
+			expr = makeNode(g_NAME, getLexeme(p))
 		}
-		n := makeNode(g_FUNCTION_PARAMETER, "", left)
-		n.flags = f_FUNCTION_PARAM_REST
-		return n
+		return makeNode(g_REST_EXPRESSION, "", expr)
 	}
-
-	n := parseDeclarator(p)
-	n.t = g_FUNCTION_PARAMETER
+	n := parseAssignmentPattern(p)
 	return n
 }
 

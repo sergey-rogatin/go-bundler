@@ -79,6 +79,10 @@ func TestObjectLiteral(t *testing.T) {
 		res string
 	}{
 		{
+			"{a,...{},b}",
+			"{a,...{},b}",
+		},
+		{
 			"{32: foo}",
 			"{32:foo}",
 		},
@@ -140,8 +144,8 @@ func TestFunctionExpression(t *testing.T) {
 			"function(foo=ee=321,bar){}",
 		},
 		{
-			"function(a,b,...c) {}",
-			"function(a,b,...c){}",
+			"function(...{}) {}",
+			"function(...{}){}",
 		},
 	}
 
@@ -169,6 +173,14 @@ func TestArrayLiteral(t *testing.T) {
 		{
 			"[foo, , , bar,];",
 			"[foo,,,bar];",
+		},
+		{
+			"[foo, ...bar];",
+			"[foo,...bar];",
+		},
+		{
+			"[foo(a, b, c, d), bar()];",
+			"[foo(a,b,c,d),bar()];",
 		},
 	}
 
@@ -585,10 +597,6 @@ func TestExportStatement(t *testing.T) {
 			"export {foo as fee, bar as default, wee, };",
 			"export{foo as fee,bar as default,wee as wee};",
 		},
-		// {
-		// 	"export * from 'foo';",
-		// 	"export * from'foo';",
-		// },
 		{
 			"export {} from 'foo';",
 			"export{} from'foo';",
@@ -611,7 +619,7 @@ func TestExportStatement(t *testing.T) {
 	}
 }
 
-func TestObjectDestructuring(t *testing.T) {
+func TestObjectPattern(t *testing.T) {
 	cases := []struct {
 		src string
 		res string
@@ -636,10 +644,10 @@ func TestObjectDestructuring(t *testing.T) {
 			"({}) = foo;",
 			"({})=foo;",
 		},
-		// {
-		// 	"var {foo,...bar=2} = doo;",
-		// 	"var {foo,...bar=2}=doo;",
-		// },
+		{
+			"var {foo,...bar} = doo;",
+			"var {foo,...bar}=doo;",
+		},
 	}
 
 	for _, c := range cases {

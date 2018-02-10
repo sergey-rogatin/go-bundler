@@ -48,18 +48,6 @@ func generateJsCode(n ast) string {
 
 		return result
 
-	case g_FUNCTION_PARAMETER:
-		result := ""
-		if n.flags&f_FUNCTION_PARAM_REST != 0 {
-			result += "..."
-		}
-		result += generateJsCode(n.children[0]) // param name
-		if len(n.children) > 1 {
-			result += "=" + generateJsCode(n.children[1]) // param default value
-		}
-
-		return result
-
 	case g_BLOCK_STATEMENT:
 		result := "{"
 		for _, st := range n.children {
@@ -497,6 +485,9 @@ func generateJsCode(n ast) string {
 
 	case g_MARKER:
 		return n.value + ":"
+
+	case g_REST_EXPRESSION, g_SPREAD_EXPRESSION:
+		return "..." + generateJsCode(n.children[0])
 	}
 
 	return ""
