@@ -3,13 +3,14 @@ package jsLoader
 import "fmt"
 
 type parserState struct {
-	sourceTokens            []token
-	index                   int
-	tok                     token
-	globalFlagIsInsideForIn bool
+	sourceTokens                 []token
+	index                        int
+	tok                          token
+	globalFlagIsInsideForIn      bool
+	globalFlagPatternParsingFail bool
 }
 
-func parseTokens(localSrc []token) (astNode, error) {
+func parseTokens(localSrc []token) (ast, error) {
 	p := parserState{
 		sourceTokens: localSrc,
 		index:        0,
@@ -122,7 +123,7 @@ func checkASI(p *parserState, tType tokenType) {
 	}
 	panic(parsingError{
 		p_UNEXPECTED_TOKEN, p.tok,
-		p.sourceTokens[p.index-5 : p.index+5],
+		nil,
 	})
 }
 
@@ -161,14 +162,14 @@ const (
 	f_EXPORT_ALL          = 1 << 1
 )
 
-type astNode struct {
+type ast struct {
 	t        grammarType
 	value    string
-	children []astNode
+	children []ast
 	flags    int
 }
 
-func (a astNode) String() string {
+func (a ast) String() string {
 	result := "{" + fmt.Sprint(a.t)
 	if a.value != "" {
 		result += ", " + a.value
@@ -180,11 +181,11 @@ func (a astNode) String() string {
 	return result
 }
 
-func makeNode(t grammarType, value string, children ...astNode) astNode {
-	return astNode{t, value, children, 0}
+func makeNode(t grammarType, value string, children ...ast) ast {
+	return ast{t, value, children, 0}
 }
 
-func parseProgram(p *parserState) (program astNode, err error) {
+func parseProgram(p *parserState) (program ast, err error) {
 	err = nil
 
 	defer func() {
@@ -195,7 +196,7 @@ func parseProgram(p *parserState) (program astNode, err error) {
 		}
 	}()
 
-	statements := []astNode{}
+	statements := []ast{}
 	for !accept(p, tEND_OF_INPUT) {
 		statements = append(statements, parseStatement(p))
 	}
@@ -204,8 +205,8 @@ func parseProgram(p *parserState) (program astNode, err error) {
 	return
 }
 
-func parseTryCatchStatement(p *parserState) astNode {
-	var try, catch, finally, catchValue astNode
+func parseTryCatchStatement(p *parserState) ast {
+	var try, catch, finally, catchValue ast
 
 	expect(p, tCURLY_LEFT)
 	try = parseBlockStatement(p)
@@ -227,7 +228,7 @@ func parseTryCatchStatement(p *parserState) astNode {
 	)
 }
 
-func parseStatement(p *parserState) astNode {
+func parseStatement(p *parserState) ast {
 	startPos := p.index
 	if accept(p, tNAME) {
 		markerName := getLexeme(p)
@@ -271,15 +272,15 @@ func parseStatement(p *parserState) astNode {
 	}
 }
 
-func parseExportStatement(p *parserState) astNode {
+func parseExportStatement(p *parserState) ast {
 	declaration := makeNode(g_EXPORT_DECLARATION, "")
 	path := makeNode(g_EXPORT_PATH, "")
-	vars := []astNode{}
+	vars := []ast{}
 	flags := 0
 
 	if accept(p, tDEFAULT) {
 
-		var name astNode
+		var name ast
 		alias := makeNode(g_EXPORT_ALIAS, "default")
 
 		if accept(p, tFUNCTION) {
@@ -359,18 +360,18 @@ func parseExportStatement(p *parserState) astNode {
 	return result
 }
 
-func parseSwitchStatement(p *parserState) astNode {
+func parseSwitchStatement(p *parserState) ast {
 	expect(p, tPAREN_LEFT)
 	condition := parseExpression(p)
 	expect(p, tPAREN_RIGHT)
 
-	cases := []astNode{}
+	cases := []ast{}
 	expect(p, tCURLY_LEFT)
 	for !accept(p, tCURLY_RIGHT) {
 		if accept(p, tCASE) {
 			caseTest := makeNode(g_SWITCH_CASE_TEST, "", parseExpression(p))
 			expect(p, tCOLON)
-			caseStatements := []astNode{}
+			caseStatements := []ast{}
 			for !test(p, tDEFAULT, tCASE, tCURLY_RIGHT) {
 				caseStatements = append(caseStatements, parseStatement(p))
 			}
@@ -385,7 +386,7 @@ func parseSwitchStatement(p *parserState) astNode {
 
 		if accept(p, tDEFAULT) {
 			expect(p, tCOLON)
-			caseStatements := []astNode{}
+			caseStatements := []ast{}
 			for !test(p, tDEFAULT, tCASE, tCURLY_RIGHT) {
 				caseStatements = append(caseStatements, parseStatement(p))
 			}
@@ -398,7 +399,7 @@ func parseSwitchStatement(p *parserState) astNode {
 	return makeNode(g_SWITCH_STATEMENT, "", condition, casesNode)
 }
 
-func parseDeclarationStatement(p *parserState) astNode {
+func parseDeclarationStatement(p *parserState) ast {
 	decl := makeNode(
 		g_DECLARATION_STATEMENT, "", parseDeclarationExpression(p),
 	)
@@ -406,10 +407,10 @@ func parseDeclarationStatement(p *parserState) astNode {
 	return decl
 }
 
-func parseDeclarationExpression(p *parserState) astNode {
+func parseDeclarationExpression(p *parserState) ast {
 	keyword := getLexeme(p)
 
-	ve := makeNode(g_DECLARATION_EXPRESSION, keyword, []astNode{}...)
+	ve := makeNode(g_DECLARATION_EXPRESSION, keyword, []ast{}...)
 	for ok := true; ok; ok = accept(p, tCOMMA) {
 		ve.children = append(ve.children, parseDeclarator(p))
 	}
@@ -417,9 +418,9 @@ func parseDeclarationExpression(p *parserState) astNode {
 	return ve
 }
 
-func parseForStatement(p *parserState) astNode {
+func parseForStatement(p *parserState) ast {
 	expect(p, tPAREN_LEFT)
-	var init astNode
+	var init ast
 	if accept(p, tVAR, tLET, tCONST) {
 		init = parseDeclarationExpression(p)
 	} else if test(p, tSEMI) {
@@ -450,7 +451,7 @@ func parseForStatement(p *parserState) astNode {
 		body := parseStatement(p)
 		return makeNode(g_FOR_IN_STATEMENT, "", left, right, body)
 	} else {
-		var test, final astNode
+		var test, final ast
 
 		expect(p, tSEMI)
 		if accept(p, tSEMI) {
@@ -473,7 +474,7 @@ func parseForStatement(p *parserState) astNode {
 	}
 }
 
-func parseIfStatement(p *parserState) astNode {
+func parseIfStatement(p *parserState) ast {
 	expect(p, tPAREN_LEFT)
 	test := parseExpression(p)
 	expect(p, tPAREN_RIGHT)
@@ -486,7 +487,7 @@ func parseIfStatement(p *parserState) astNode {
 	return makeNode(g_IF_STATEMENT, "", test, body)
 }
 
-func parseWhileStatement(p *parserState) astNode {
+func parseWhileStatement(p *parserState) ast {
 	expect(p, tPAREN_LEFT)
 	test := parseExpression(p)
 	expect(p, tPAREN_RIGHT)
@@ -495,7 +496,7 @@ func parseWhileStatement(p *parserState) astNode {
 	return makeNode(g_WHILE_STATEMENT, "", test, body)
 }
 
-func parseDoWhileStatement(p *parserState) astNode {
+func parseDoWhileStatement(p *parserState) ast {
 	body := parseStatement(p)
 	expect(p, tWHILE)
 	expect(p, tPAREN_LEFT)
@@ -505,7 +506,7 @@ func parseDoWhileStatement(p *parserState) astNode {
 	return makeNode(g_DO_WHILE_STATEMENT, "", test, body)
 }
 
-func parseFunctionDeclaration(p *parserState) astNode {
+func parseFunctionDeclaration(p *parserState) ast {
 	expect(p, tNAME)
 	name := getLexeme(p)
 
@@ -517,7 +518,7 @@ func parseFunctionDeclaration(p *parserState) astNode {
 	return makeNode(g_FUNCTION_DECLARATION, name, params, body)
 }
 
-func parseExpressionStatement(p *parserState) astNode {
+func parseExpressionStatement(p *parserState) ast {
 	if accept(p, tBREAK) {
 		return makeNode(g_BREAK_STATEMENT, "")
 	} else if accept(p, tCONTINUE) {
@@ -530,7 +531,7 @@ func parseExpressionStatement(p *parserState) astNode {
 	return expr
 }
 
-func parseReturnStatement(p *parserState) astNode {
+func parseReturnStatement(p *parserState) ast {
 	if accept(p, tSEMI) {
 		return makeNode(g_RETURN_STATEMENT, "")
 	}
@@ -538,14 +539,14 @@ func parseReturnStatement(p *parserState) astNode {
 	return makeNode(g_RETURN_STATEMENT, "", expr)
 }
 
-func parseExpression(p *parserState) astNode {
+func parseExpression(p *parserState) ast {
 	return parseSequence(p)
 }
 
-func parseSequence(p *parserState) astNode {
+func parseSequence(p *parserState) ast {
 	firstItem := parseYield(p)
 
-	children := []astNode{firstItem}
+	children := []ast{firstItem}
 	for accept(p, tCOMMA) {
 		children = append(children, parseYield(p))
 	}
@@ -556,24 +557,34 @@ func parseSequence(p *parserState) astNode {
 	return firstItem
 }
 
-func parseYield(p *parserState) astNode {
+func parseYield(p *parserState) ast {
 	if accept(p, tYIELD) {
 		return makeNode(g_EXPRESSION, "yield", parseYield(p))
 	}
 	return parseAssignment(p)
 }
 
-func parseAssignment(p *parserState) astNode {
-	// if accept(p,tCURLY_LEFT) {
-	// 	left := parseObjectPattern()
+func parseAssignment(p *parserState) ast {
+	var left ast
+	startPos := p.index
 
-	// 	if accept(p,tASSIGN) {
-	// 		right := parseAssignment()
-	// 		return makeNode(g_EXPRESSION, "=", left, right)
-	// 	}
-	// }
+	if accept(p, tCURLY_LEFT) {
+		left = parseObjectPattern(p)
+	} else if accept(p, tBRACKET_LEFT) {
+		left = parseArrayPattern(p)
+	}
 
-	left := parseConditional(p)
+	if left.t == g_INVALID_GRAMMAR {
+		backtrack(p, startPos)
+	} else if left.t != g_UNDEFINED {
+		if accept(p, tASSIGN) {
+			right := parseAssignment(p)
+			return makeNode(g_EXPRESSION, "=", left, right)
+		}
+		backtrack(p, startPos)
+	}
+
+	left = parseConditional(p)
 
 	if accept(p,
 		tASSIGN, tPLUS_ASSIGN, tMINUS_ASSIGN, tMULT_ASSIGN, tDIV_ASSIGN,
@@ -589,14 +600,16 @@ func parseAssignment(p *parserState) astNode {
 	return left
 }
 
-func parseAssignmentPattern(p *parserState) astNode {
-	var left astNode
-	if accept(p, tCURLY_LEFT) {
+func parseAssignmentPattern(p *parserState) ast {
+	var left ast
+	if accept(p, tBRACKET_LEFT) {
+		left = parseArrayPattern(p)
+	} else if accept(p, tCURLY_LEFT) {
 		left = parseObjectPattern(p)
 	} else if accept(p, tNAME) {
 		left = makeNode(g_NAME, getLexeme(p))
 	} else {
-		checkASI(p, tSEMI)
+		return makeNode(g_INVALID_GRAMMAR, "")
 	}
 
 	if accept(p, tASSIGN) {
@@ -607,23 +620,53 @@ func parseAssignmentPattern(p *parserState) astNode {
 	return left
 }
 
-func parseObjectPattern(p *parserState) astNode {
-	properties := []astNode{}
+func parseArrayPattern(p *parserState) ast {
+	properties := []ast{}
+
+	for !accept(p, tBRACKET_RIGHT) {
+		if accept(p, tCOMMA) {
+			properties = append(properties, makeNode(g_EMPTY_EXPRESSION, ""))
+			continue
+		}
+
+		prop := parseAssignmentPattern(p)
+		if prop.t == g_INVALID_GRAMMAR {
+			return prop
+		}
+		properties = append(properties, prop)
+
+		if !accept(p, tCOMMA) {
+			expect(p, tBRACKET_RIGHT)
+			break
+		}
+	}
+
+	return makeNode(g_ARRAY_PATTERN, "", properties...)
+}
+
+func parseObjectPattern(p *parserState) ast {
+	properties := []ast{}
 	for !accept(p, tCURLY_RIGHT) {
 		if accept(p, tNAME) {
-			prop := makeNode(g_OBJECT_PROPERTY, "", []astNode{}...)
+			prop := makeNode(g_OBJECT_PROPERTY, "", []ast{}...)
 			key := makeNode(g_NAME, getLexeme(p))
 			prop.children = append(prop.children, key)
 
 			if accept(p, tCOLON) {
-				prop.children = append(prop.children, parseAssignmentPattern(p))
+				val := parseAssignmentPattern(p)
+				if val.t == g_INVALID_GRAMMAR {
+					return val
+				}
+				prop.children = append(prop.children, val)
 			}
 
 			properties = append(properties, prop)
 		}
 
 		if !accept(p, tCOMMA) {
-			expect(p, tCURLY_RIGHT)
+			if !accept(p, tCURLY_RIGHT) {
+				return makeNode(g_INVALID_GRAMMAR, "")
+			}
 			break
 		}
 	}
@@ -631,7 +674,7 @@ func parseObjectPattern(p *parserState) astNode {
 	return makeNode(g_OBJECT_PATTERN, "", properties...)
 }
 
-func parseConditional(p *parserState) astNode {
+func parseConditional(p *parserState) ast {
 	test := parseBinary(p)
 
 	if accept(p, tQUESTION) {
@@ -644,10 +687,10 @@ func parseConditional(p *parserState) astNode {
 	return test
 }
 
-func parseBinary(p *parserState) astNode {
+func parseBinary(p *parserState) ast {
 	opStack := make([]token, 0)
-	outputStack := make([]astNode, 0)
-	var root *astNode
+	outputStack := make([]ast, 0)
+	var root *ast
 
 	addNode := func(t token) {
 		right := outputStack[len(outputStack)-1]
@@ -696,7 +739,7 @@ func parseBinary(p *parserState) astNode {
 	return outputStack[len(outputStack)-1]
 }
 
-func parsePrefixUnary(p *parserState) astNode {
+func parsePrefixUnary(p *parserState) ast {
 	if accept(p,
 		tNOT, tBITWISE_NOT, tPLUS, tMINUS,
 		tINC, tDEC, tTYPEOF, tVOID, tDELETE,
@@ -709,7 +752,7 @@ func parsePrefixUnary(p *parserState) astNode {
 	return parsePostfixUnary(p)
 }
 
-func parsePostfixUnary(p *parserState) astNode {
+func parsePostfixUnary(p *parserState) ast {
 	value := parseFunctionCallOrMember(p, false)
 
 	if accept(p, tINC, tDEC) {
@@ -719,8 +762,8 @@ func parsePostfixUnary(p *parserState) astNode {
 	return value
 }
 
-func parseFunctionArgs(p *parserState) astNode {
-	args := []astNode{}
+func parseFunctionArgs(p *parserState) ast {
+	args := []ast{}
 
 	for !accept(p, tPAREN_RIGHT) {
 		args = append(args, parseExpression(p))
@@ -736,7 +779,7 @@ func parseFunctionArgs(p *parserState) astNode {
 	return argsNode
 }
 
-func parseFunctionCallOrMember(p *parserState, onlyMember bool) astNode {
+func parseFunctionCallOrMember(p *parserState, onlyMember bool) ast {
 	funcName := parseConstructorCall(p)
 
 	for {
@@ -746,7 +789,7 @@ func parseFunctionCallOrMember(p *parserState, onlyMember bool) astNode {
 
 			funcName = n
 		} else {
-			var property astNode
+			var property ast
 
 			if accept(p, tDOT) {
 				expect(p, tNAME)
@@ -766,7 +809,7 @@ func parseFunctionCallOrMember(p *parserState, onlyMember bool) astNode {
 	return funcName
 }
 
-func parseConstructorCall(p *parserState) astNode {
+func parseConstructorCall(p *parserState) ast {
 	if accept(p, tNEW) {
 		name := parseFunctionCallOrMember(p, true)
 		if accept(p, tPAREN_LEFT) {
@@ -780,7 +823,7 @@ func parseConstructorCall(p *parserState) astNode {
 	return parseAtom(p)
 }
 
-func parseAtom(p *parserState) astNode {
+func parseAtom(p *parserState) ast {
 	switch {
 	case accept(p, tDIV):
 		return parseRegexp(p)
@@ -812,10 +855,10 @@ func parseAtom(p *parserState) astNode {
 	default:
 		checkASI(p, tSEMI)
 	}
-	return astNode{}
+	return ast{}
 }
 
-func parseRegexp(p *parserState) astNode {
+func parseRegexp(p *parserState) ast {
 	value := "/"
 	for {
 		if accept(p, tDIV) {
@@ -836,13 +879,13 @@ func parseRegexp(p *parserState) astNode {
 	return makeNode(g_REGEXP_LITERAL, value)
 }
 
-func parseParensOrLambda(p *parserState) astNode {
+func parseParensOrLambda(p *parserState) ast {
 	prevPos := p.index
 
 	params := parseFunctionParameters(p)
 
 	if accept(p, tLAMBDA) {
-		var body astNode
+		var body ast
 		if accept(p, tCURLY_LEFT) {
 			body = parseBlockStatement(p)
 		} else {
@@ -853,7 +896,7 @@ func parseParensOrLambda(p *parserState) astNode {
 
 	backtrack(p, prevPos)
 
-	var value astNode
+	var value ast
 	if !accept(p, tPAREN_RIGHT) {
 		value = parseExpression(p)
 		expect(p, tPAREN_RIGHT)
@@ -862,11 +905,11 @@ func parseParensOrLambda(p *parserState) astNode {
 	return makeNode(g_PARENS_EXPRESSION, "", value)
 }
 
-func parseFunctionParameters(p *parserState) astNode {
+func parseFunctionParameters(p *parserState) ast {
 	startPos := p.index
 
-	result := astNode{g_FUNCTION_PARAMETERS, "", nil, 0}
-	params := []astNode{}
+	result := ast{g_FUNCTION_PARAMETERS, "", nil, 0}
+	params := []ast{}
 	for !accept(p, tPAREN_RIGHT) {
 		params = append(params, parseFunctionParameter(p))
 
@@ -882,7 +925,7 @@ func parseFunctionParameters(p *parserState) astNode {
 	return result
 }
 
-func parseFunctionExpression(p *parserState) astNode {
+func parseFunctionExpression(p *parserState) ast {
 	name := ""
 	if accept(p, tNAME) {
 		name = getLexeme(p)
@@ -896,12 +939,12 @@ func parseFunctionExpression(p *parserState) astNode {
 	return makeNode(g_FUNCTION_EXPRESSION, name, params, body)
 }
 
-func parseObjectLiteral(p *parserState) astNode {
-	props := []astNode{}
+func parseObjectLiteral(p *parserState) ast {
+	props := []ast{}
 
 	for !accept(p, tCURLY_RIGHT) {
-		prop := astNode{g_OBJECT_PROPERTY, "", []astNode{}, 0}
-		var key, value astNode
+		prop := ast{g_OBJECT_PROPERTY, "", []ast{}, 0}
+		var key, value ast
 
 		if getNoNewline(p).lexeme == "get" {
 			accept(p, tNAME)
@@ -939,16 +982,20 @@ func parseObjectLiteral(p *parserState) astNode {
 	return makeNode(g_OBJECT_LITERAL, "", props...)
 }
 
-func parseMemberFunction(p *parserState) astNode {
+func parseMemberFunction(p *parserState) ast {
 	f := parseFunctionExpression(p)
 	f.t = g_MEMBER_FUNCTION
 	return f
 }
 
-func parseArrayLiteral(p *parserState) astNode {
-	values := []astNode{}
+func parseArrayLiteral(p *parserState) ast {
+	values := []ast{}
 
 	for !accept(p, tBRACKET_RIGHT) {
+		if accept(p, tCOMMA) {
+			values = append(values, makeNode(g_EMPTY_EXPRESSION, ""))
+			continue
+		}
 		values = append(values, parseYield(p))
 
 		if !accept(p, tCOMMA) {
@@ -960,11 +1007,11 @@ func parseArrayLiteral(p *parserState) astNode {
 	return makeNode(g_ARRAY_LITERAL, "", values...)
 }
 
-func parseLambdaOrName(p *parserState) astNode {
+func parseLambdaOrName(p *parserState) ast {
 	firstParamStr := getLexeme(p)
 
 	if accept(p, tLAMBDA) {
-		var body astNode
+		var body ast
 		if accept(p, tCURLY_LEFT) {
 			body = parseBlockStatement(p)
 		} else {
@@ -982,17 +1029,17 @@ func parseLambdaOrName(p *parserState) astNode {
 	return makeNode(g_NAME, firstParamStr)
 }
 
-func parseBlockStatement(p *parserState) astNode {
-	statements := []astNode{}
+func parseBlockStatement(p *parserState) ast {
+	statements := []ast{}
 	for !accept(p, tCURLY_RIGHT) {
 		statements = append(statements, parseStatement(p))
 	}
 	return makeNode(g_BLOCK_STATEMENT, "", statements...)
 }
 
-func parseFunctionParameter(p *parserState) astNode {
+func parseFunctionParameter(p *parserState) ast {
 	if accept(p, tSPREAD) {
-		var left astNode
+		var left ast
 		if accept(p, tCURLY_LEFT) {
 			left = parseObjectPattern(p)
 		} else if accept(p, tNAME) {
@@ -1008,8 +1055,8 @@ func parseFunctionParameter(p *parserState) astNode {
 	return n
 }
 
-func parseDeclarator(p *parserState) astNode {
-	var left astNode
+func parseDeclarator(p *parserState) ast {
+	var left ast
 	if accept(p, tCURLY_LEFT) {
 		left = parseObjectPattern(p)
 	} else if accept(p, tNAME) {
@@ -1026,16 +1073,16 @@ func parseDeclarator(p *parserState) astNode {
 	return makeNode(g_DECLARATOR, "", left)
 }
 
-func parseCalculatedPropertyName(p *parserState) astNode {
+func parseCalculatedPropertyName(p *parserState) ast {
 	value := parseExpression(p)
 	expect(p, tBRACKET_RIGHT)
 	return makeNode(g_CALCULATED_PROPERTY_NAME, "", value)
 }
 
-func parseImportStatement(p *parserState) astNode {
-	vars := astNode{g_IMPORT_VARS, "", []astNode{}, 0}
-	all := astNode{t: g_IMPORT_ALL}
-	path := astNode{t: g_IMPORT_PATH}
+func parseImportStatement(p *parserState) ast {
+	vars := ast{g_IMPORT_VARS, "", []ast{}, 0}
+	all := ast{t: g_IMPORT_ALL}
+	path := ast{t: g_IMPORT_PATH}
 
 	if accept(p, tMULT) {
 		expect(p, tNAME)

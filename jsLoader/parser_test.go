@@ -38,10 +38,10 @@ func TestLambda(t *testing.T) {
 		setParser(c.src)
 		le := parseExpression(&ps)
 
-		res := printAst(le)
+		res := generateJsCode(le)
 		if res != c.exp {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
+			t.Errorf("Expected %s, got %s", c.exp, generateJsCode(le))
 		}
 	}
 }
@@ -65,10 +65,10 @@ func TestMemberExpression(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -118,10 +118,10 @@ func TestObjectLiteral(t *testing.T) {
 		setParser(c.src)
 		le := parseExpression(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -149,10 +149,10 @@ func TestFunctionExpression(t *testing.T) {
 		setParser(c.src)
 		le := parseExpression(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -163,19 +163,23 @@ func TestArrayLiteral(t *testing.T) {
 		res string
 	}{
 		{
-			"[foo, bar, 213*(21+3), () => foo,]",
-			"[foo,bar,213*(21+3),()=>foo]",
+			"[foo, bar, 213*(21+3), () => foo,];",
+			"[foo,bar,213*(21+3),()=>foo];",
+		},
+		{
+			"[foo, , , bar,];",
+			"[foo,,,bar];",
 		},
 	}
 
 	for _, c := range cases {
 		setParser(c.src)
-		le := parseExpression(&ps)
+		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -195,10 +199,10 @@ func TestBlockStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -218,10 +222,10 @@ func TestMarkerStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -277,10 +281,10 @@ func TestForStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -304,10 +308,10 @@ func TestInAndInstanceof(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -327,10 +331,10 @@ func TestExpressions(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -350,10 +354,10 @@ func TestStringLiterals(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -381,10 +385,10 @@ func TestWhileStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -412,10 +416,10 @@ func TestDoWhileStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -443,10 +447,10 @@ func TestIfStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -466,10 +470,10 @@ func TestFunctionStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -505,10 +509,10 @@ func TestImportStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -540,10 +544,10 @@ func TestExpressionStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -599,10 +603,10 @@ func TestExportStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -642,10 +646,10 @@ func TestObjectDestructuring(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -669,10 +673,10 @@ func TestSwitchStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -717,10 +721,10 @@ func TestNewlineAndSemi(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -761,7 +765,7 @@ func TestImportTransform(t *testing.T) {
 		ast, _ := parseTokens(ps.sourceTokens)
 		transAst, _ := transformIntoModule(ast, "a.js")
 
-		str := printAst(transAst)
+		str := generateJsCode(transAst)
 		cutStr := str[20 : len(str)-10]
 
 		if cutStr != c.res {
@@ -823,7 +827,7 @@ func TestExportTransform(t *testing.T) {
 		ast, _ := parseTokens(ps.sourceTokens)
 		transAst, _ := transformIntoModule(ast, "a.js")
 
-		str := printAst(transAst)
+		str := generateJsCode(transAst)
 		cutStr := str[41 : len(str)-17]
 
 		if cutStr != c.res {
@@ -849,7 +853,7 @@ func TestRequireTransform(t *testing.T) {
 		ast, _ := parseTokens(ps.sourceTokens)
 		transAst, _ := transformIntoModule(ast, "a.js")
 
-		str := printAst(transAst)
+		str := generateJsCode(transAst)
 		cutStr := str[41 : len(str)-17]
 
 		if cutStr != c.res {
@@ -881,10 +885,10 @@ func TestReturnStatement(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -904,10 +908,10 @@ func TestConditional(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
@@ -931,49 +935,49 @@ func TestRegexp(t *testing.T) {
 		setParser(c.src)
 		le := parseStatement(&ps)
 
-		act := printAst(le)
+		act := generateJsCode(le)
 		if act != c.res {
 			t.Errorf("%v", le)
-			t.Errorf("Expected %s, got %s", c.res, printAst(le))
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
 		}
 	}
 }
 
-// func TestArrayPattern(t *testing.T) {
-// 	cases := []struct {
-// 		src string
-// 		res string
-// 	}{
-// 		{
-// 			"[foo,bar,]",
-// 			"[foo,bar,]",
-// 		},
-// 		{
-// 			"[foo,,]",
-// 			"[foo,,]",
-// 		},
-// 		{
-// 			"[a = 23, foo]",
-// 			"[a=23,foo]",
-// 		},
-// 		{
-// 			"[{foo:bar = 23} = 23, foo]",
-// 			"[{foo:bar=23}=23,foo]",
-// 		},
-// 		// {
-// 		// 	"[a, ...b]",
-// 		// 	"[a,...b]",
-// 		// },
-// 	}
+func TestArrayPattern(t *testing.T) {
+	cases := []struct {
+		src string
+		res string
+	}{
+		{
+			"[,,] = foo;",
+			"[,]=foo;",
+		},
+		{
+			"[foo,,bar] = a;",
+			"[foo,,bar]=a;",
+		},
+		{
+			"[a = 23, foo]=a;",
+			"[a=23,foo]=a;",
+		},
+		{
+			"[{foo:bar = 23} = 23, foo]=a;",
+			"[{foo:bar=23}=23,foo]=a;",
+		},
+		// {
+		// 	"[a, ...b]",
+		// 	"[a,...b]",
+		// },
+	}
 
-// 	for _, c := range cases {
-// 		setParser(c.src)
-// 		le := parseStatement()
+	for _, c := range cases {
+		setParser(c.src)
+		le := parseStatement(&ps)
 
-// 		//t.Errorf("%v", le)
-// 		act := printAst(le)
-// 		if act != c.res {
-// 			t.Errorf("Expected %s, got %s", c.res, printAst(le))
-// 		}
-// 	}
-// }
+		act := generateJsCode(le)
+		if act != c.res {
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.res, generateJsCode(le))
+		}
+	}
+}

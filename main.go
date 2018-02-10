@@ -54,13 +54,6 @@ type bundleCache struct {
 	Lock  sync.RWMutex
 }
 
-func (c *bundleCache) getLength() int {
-	c.Lock.RLock()
-	defer c.Lock.RUnlock()
-	res := len(c.Files)
-	return res
-}
-
 func (c *bundleCache) read(fileName string) (fileCache, bool) {
 	c.Lock.RLock()
 	defer c.Lock.RUnlock()

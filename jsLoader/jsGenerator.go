@@ -1,17 +1,17 @@
 package jsLoader
 
-func printAst(n astNode) string {
+func generateJsCode(n ast) string {
 	switch n.t {
 	case g_IMPORT_ALIAS:
 		return n.value
 
 	case g_DECLARATION_STATEMENT:
-		return printAst(n.children[0]) + ";"
+		return generateJsCode(n.children[0]) + ";"
 
 	case g_DECLARATION_EXPRESSION:
 		result := n.value + " "
 		for i, d := range n.children {
-			result += printAst(d) // declarator
+			result += generateJsCode(d) // declarator
 			if i < len(n.children)-1 {
 				result += ","
 			}
@@ -19,9 +19,9 @@ func printAst(n astNode) string {
 		return result
 
 	case g_DECLARATOR:
-		result := printAst(n.children[0]) // var name
+		result := generateJsCode(n.children[0]) // var name
 		if len(n.children) > 1 {
-			result += "=" + printAst(n.children[1]) // var value
+			result += "=" + generateJsCode(n.children[1]) // var value
 		}
 		return result
 
@@ -31,15 +31,15 @@ func printAst(n astNode) string {
 
 	case g_FUNCTION_DECLARATION:
 		result := "function " + n.value
-		result += printAst(n.children[0]) // function params
-		result += printAst(n.children[1]) // function body
+		result += generateJsCode(n.children[0]) // function params
+		result += generateJsCode(n.children[1]) // function body
 
 		return result
 
 	case g_FUNCTION_PARAMETERS, g_FUNCTION_ARGS:
 		result := "("
 		for i, param := range n.children {
-			result += printAst(param)
+			result += generateJsCode(param)
 			if i < len(n.children)-1 {
 				result += ","
 			}
@@ -53,9 +53,9 @@ func printAst(n astNode) string {
 		if n.flags&f_FUNCTION_PARAM_REST != 0 {
 			result += "..."
 		}
-		result += printAst(n.children[0]) // param name
+		result += generateJsCode(n.children[0]) // param name
 		if len(n.children) > 1 {
-			result += "=" + printAst(n.children[1]) // param default value
+			result += "=" + generateJsCode(n.children[1]) // param default value
 		}
 
 		return result
@@ -63,33 +63,33 @@ func printAst(n astNode) string {
 	case g_BLOCK_STATEMENT:
 		result := "{"
 		for _, st := range n.children {
-			result += printAst(st)
+			result += generateJsCode(st)
 		}
 		result += "}"
 
 		return result
 
 	case g_EXPRESSION_STATEMENT:
-		return printAst(n.children[0]) + ";"
+		return generateJsCode(n.children[0]) + ";"
 
 	case g_IF_STATEMENT:
 		result := "if("
-		result += printAst(n.children[0]) + ")" // condition
-		result += printAst(n.children[1])       // body
+		result += generateJsCode(n.children[0]) + ")" // condition
+		result += generateJsCode(n.children[1])       // body
 		if len(n.children) > 2 {
-			result += " else " + printAst(n.children[2]) // alternate
+			result += " else " + generateJsCode(n.children[2]) // alternate
 		}
 
 		return result
 
 	case g_EXPRESSION:
-		result := printAst(n.children[0]) // left
+		result := generateJsCode(n.children[0]) // left
 		if n.value == "in" || n.value == "instanceof" {
 			result += " " + n.value + " "
 		} else {
 			result += n.value // operator
 		}
-		result += printAst(n.children[1]) // right
+		result += generateJsCode(n.children[1]) // right
 
 		return result
 
@@ -98,7 +98,7 @@ func printAst(n astNode) string {
 		if n.value != "" {
 			result += n.value + " " // set or get
 		}
-		result += printAst(n.children[0]) // key
+		result += generateJsCode(n.children[0]) // key
 
 		if len(n.children) > 1 {
 			value := n.children[1]
@@ -106,14 +106,14 @@ func printAst(n astNode) string {
 				result += ":"
 			}
 
-			result += printAst(value) // value
+			result += generateJsCode(value) // value
 		}
 		return result
 
 	case g_OBJECT_PATTERN, g_OBJECT_LITERAL:
 		result := "{"
 		for i, prop := range n.children {
-			result += printAst(prop)
+			result += generateJsCode(prop)
 
 			if i < len(n.children)-1 {
 				result += ","
@@ -124,14 +124,14 @@ func printAst(n astNode) string {
 		return result
 
 	case g_ASSIGNMENT_PATTERN:
-		result := printAst(n.children[0]) // left
+		result := generateJsCode(n.children[0]) // left
 		result += "="
-		result += printAst(n.children[1]) // right
+		result += generateJsCode(n.children[1]) // right
 
 		return result
 
 	case g_UNARY_POSTFIX_EXPRESSION:
-		result := printAst(n.children[0]) // value
+		result := generateJsCode(n.children[0]) // value
 		result += n.value
 
 		return result
@@ -139,9 +139,9 @@ func printAst(n astNode) string {
 	case g_UNARY_PREFIX_EXPRESSION:
 		result := n.value
 		if n.value == "typeof" || n.value == "void" || n.value == "delete" {
-			result += " " + printAst(n.children[0]) + " "
+			result += " " + generateJsCode(n.children[0]) + " "
 		} else {
-			result += printAst(n.children[0]) // value
+			result += generateJsCode(n.children[0]) // value
 		}
 
 		return result
@@ -149,7 +149,7 @@ func printAst(n astNode) string {
 	case g_ARRAY_LITERAL, g_ARRAY_PATTERN:
 		result := "["
 		for i, item := range n.children {
-			result += printAst(item)
+			result += generateJsCode(item)
 			if i < len(n.children)-1 {
 				result += ","
 			}
@@ -160,16 +160,16 @@ func printAst(n astNode) string {
 
 	case g_LAMBDA_EXPRESSION:
 		result := ""
-		result += printAst(n.children[0]) // params
+		result += generateJsCode(n.children[0]) // params
 		result += "=>"
-		result += printAst(n.children[1]) // body
+		result += generateJsCode(n.children[1]) // body
 
 		return result
 
 	case g_FUNCTION_CALL:
-		result := printAst(n.children[0]) // func name
+		result := generateJsCode(n.children[0]) // func name
 		if len(n.children) > 1 {
-			result += printAst(n.children[1]) // func args
+			result += generateJsCode(n.children[1]) // func args
 		} else {
 			result += "()"
 		}
@@ -177,24 +177,24 @@ func printAst(n astNode) string {
 		return result
 
 	case g_MEMBER_EXPRESSION:
-		result := printAst(n.children[0]) // object
+		result := generateJsCode(n.children[0]) // object
 
 		prop := n.children[1]
 		if prop.t == g_CALCULATED_PROPERTY_NAME {
-			result += printAst(prop)
+			result += generateJsCode(prop)
 		} else {
 			result += "."
-			result += printAst(prop) // property
+			result += generateJsCode(prop) // property
 		}
 
 		return result
 
 	case g_CALCULATED_PROPERTY_NAME:
-		return "[" + printAst(n.children[0]) + "]"
+		return "[" + generateJsCode(n.children[0]) + "]"
 
 	case g_CONSTRUCTOR_CALL:
-		result := "new " + printAst(n.children[0]) // func name
-		result += printAst(n.children[1])          // args
+		result := "new " + generateJsCode(n.children[0]) // func name
+		result += generateJsCode(n.children[1])          // args
 
 		return result
 
@@ -202,8 +202,8 @@ func printAst(n astNode) string {
 		return n.value
 
 	case g_MEMBER_FUNCTION:
-		result := printAst(n.children[0]) // params
-		result += printAst(n.children[1]) // body
+		result := generateJsCode(n.children[0]) // params
+		result += generateJsCode(n.children[1]) // body
 
 		return result
 
@@ -212,12 +212,12 @@ func printAst(n astNode) string {
 		if n.value != "" {
 			result += " " + n.value
 		}
-		result += printAst(n.children[0]) // params
-		result += printAst(n.children[1]) // body
+		result += generateJsCode(n.children[0]) // params
+		result += generateJsCode(n.children[1]) // body
 		return result
 
 	case g_PARENS_EXPRESSION:
-		result := "(" + printAst(n.children[0]) + ")"
+		result := "(" + generateJsCode(n.children[0]) + ")"
 		return result
 
 	case g_EMPTY_STATEMENT:
@@ -225,40 +225,40 @@ func printAst(n astNode) string {
 
 	case g_FOR_STATEMENT:
 		result := "for("
-		result += printAst(n.children[0]) + ";" // init
-		result += printAst(n.children[1]) + ";" // test
-		result += printAst(n.children[2]) + ")" // final
-		result += printAst(n.children[3])       // body
+		result += generateJsCode(n.children[0]) + ";" // init
+		result += generateJsCode(n.children[1]) + ";" // test
+		result += generateJsCode(n.children[2]) + ")" // final
+		result += generateJsCode(n.children[3])       // body
 
 		return result
 
 	case g_FOR_OF_STATEMENT:
 		result := "for("
-		result += printAst(n.children[0]) + " of " // init
-		result += printAst(n.children[1]) + ")"    // test
-		result += printAst(n.children[2])          // body
+		result += generateJsCode(n.children[0]) + " of " // init
+		result += generateJsCode(n.children[1]) + ")"    // test
+		result += generateJsCode(n.children[2])          // body
 
 		return result
 
 	case g_FOR_IN_STATEMENT:
 		result := "for("
-		result += printAst(n.children[0]) + " in " // init
-		result += printAst(n.children[1]) + ")"    // test
-		result += printAst(n.children[2])          // body
+		result += generateJsCode(n.children[0]) + " in " // init
+		result += generateJsCode(n.children[1]) + ")"    // test
+		result += generateJsCode(n.children[2])          // body
 
 		return result
 
 	case g_WHILE_STATEMENT:
 		result := "while("
-		result += printAst(n.children[0]) + ")" // condition
-		result += printAst(n.children[1])       // body
+		result += generateJsCode(n.children[0]) + ")" // condition
+		result += generateJsCode(n.children[1])       // body
 
 		return result
 
 	case g_SEQUENCE_EXPRESSION:
 		result := ""
 		for i, c := range n.children {
-			result += printAst(c)
+			result += generateJsCode(c)
 			if i < len(n.children)-1 {
 				result += ","
 			}
@@ -268,8 +268,8 @@ func printAst(n astNode) string {
 
 	case g_DO_WHILE_STATEMENT:
 		result := "do "
-		result += printAst(n.children[1])                   // body
-		result += "while(" + printAst(n.children[0]) + ");" // condition
+		result += generateJsCode(n.children[1])                   // body
+		result += "while(" + generateJsCode(n.children[0]) + ");" // condition
 
 		return result
 
@@ -294,7 +294,7 @@ func printAst(n astNode) string {
 			}
 		}
 
-		all := printAst(n.children[1]) // import all
+		all := generateJsCode(n.children[1]) // import all
 		if all != "" {
 			if result != "import" {
 				result += ","
@@ -309,7 +309,7 @@ func printAst(n astNode) string {
 			result += "{"
 			for i := 0; i < len(vars); i++ {
 				if i != alreadyPrintedVar {
-					result += printAst(vars[i])
+					result += generateJsCode(vars[i])
 					if i < len(vars)-1 {
 						result += ","
 					}
@@ -321,7 +321,7 @@ func printAst(n astNode) string {
 		if result != "import" {
 			result += " from"
 		}
-		result += printAst(n.children[2]) // import path
+		result += generateJsCode(n.children[2]) // import path
 
 		result += ";"
 		return result
@@ -358,7 +358,7 @@ func printAst(n astNode) string {
 		noDefault := true
 
 		declaration := n.children[1]
-		result += printAst(declaration)
+		result += generateJsCode(declaration)
 
 		result += "export"
 		vars := n.children[0].children
@@ -367,7 +367,7 @@ func printAst(n astNode) string {
 			alias := v.children[1]
 			name := v.children[0]
 			if alias.value == "default" {
-				result += " default " + printAst(name)
+				result += " default " + generateJsCode(name)
 				noDefault = false
 			}
 		}
@@ -375,7 +375,7 @@ func printAst(n astNode) string {
 		if noDefault {
 			result += "{"
 			for i, v := range vars {
-				result += printAst(v)
+				result += generateJsCode(v)
 				if i < len(vars)-1 {
 					result += ","
 				}
@@ -383,7 +383,7 @@ func printAst(n astNode) string {
 			result += "}"
 		}
 
-		result += printAst(n.children[2]) // export path
+		result += generateJsCode(n.children[2]) // export path
 
 		result += ";"
 		return result
@@ -395,9 +395,9 @@ func printAst(n astNode) string {
 		return ""
 
 	case g_EXPORT_VAR:
-		result := printAst(n.children[0]) // name
+		result := generateJsCode(n.children[0]) // name
 		if len(n.children) > 1 {
-			result += " as " + printAst(n.children[1]) // alias
+			result += " as " + generateJsCode(n.children[1]) // alias
 		}
 		return result
 
@@ -409,14 +409,14 @@ func printAst(n astNode) string {
 
 	case g_SWITCH_STATEMENT:
 		result := "switch("
-		result += printAst(n.children[0]) + ")" // test
+		result += generateJsCode(n.children[0]) + ")" // test
 		result += "{"
 		for _, c := range n.children[1].children {
-			result += printAst(c)
+			result += generateJsCode(c)
 		}
 
 		if len(n.children) > 2 {
-			result += printAst(n.children[2]) // default
+			result += generateJsCode(n.children[2]) // default
 		}
 		result += "}"
 
@@ -425,33 +425,33 @@ func printAst(n astNode) string {
 	case g_SWITCH_DEFAULT:
 		result := "default:"
 		for _, st := range n.children {
-			result += printAst(st)
+			result += generateJsCode(st)
 		}
 		return result
 
 	case g_SWITCH_CASE:
 		result := "case "
-		result += printAst(n.children[0]) + ":" // test
+		result += generateJsCode(n.children[0]) + ":" // test
 		for _, st := range n.children[1].children {
-			result += printAst(st)
+			result += generateJsCode(st)
 		}
 		return result
 
 	case g_SWITCH_CASE_TEST:
-		result := printAst(n.children[0])
+		result := generateJsCode(n.children[0])
 		return result
 
 	case g_PROGRAM_STATEMENT:
 		result := ""
 		for _, st := range n.children {
-			result += printAst(st)
+			result += generateJsCode(st)
 		}
 		return result
 
 	case g_RETURN_STATEMENT:
 		result := "return"
 		if len(n.children) > 0 {
-			result += " " + printAst(n.children[0])
+			result += " " + generateJsCode(n.children[0])
 		}
 		result += ";"
 
@@ -463,7 +463,7 @@ func printAst(n astNode) string {
 	case g_MULTISTATEMENT:
 		result := ""
 		for _, st := range n.children {
-			result += printAst(st)
+			result += generateJsCode(st)
 		}
 		return result
 
@@ -475,11 +475,11 @@ func printAst(n astNode) string {
 
 	case g_TRY_CATCH_STATEMENT:
 		result := "try"
-		result += printAst(n.children[0])
-		catch := printAst(n.children[2])
-		finally := printAst(n.children[3])
+		result += generateJsCode(n.children[0])
+		catch := generateJsCode(n.children[2])
+		finally := generateJsCode(n.children[3])
 		if catch != "" {
-			result += "catch(" + printAst(n.children[1]) + ")"
+			result += "catch(" + generateJsCode(n.children[1]) + ")"
 			result += catch
 		}
 		if finally != "" {
@@ -490,10 +490,10 @@ func printAst(n astNode) string {
 		return result
 
 	case g_THROW_STATEMENT:
-		return "throw " + printAst(n.children[0])
+		return "throw " + generateJsCode(n.children[0])
 
 	case g_CONDITIONAL_EXPRESSION:
-		return printAst(n.children[0]) + "?" + printAst(n.children[1]) + ":" + printAst(n.children[2])
+		return generateJsCode(n.children[0]) + "?" + generateJsCode(n.children[1]) + ":" + generateJsCode(n.children[2])
 
 	case g_MARKER:
 		return n.value + ":"

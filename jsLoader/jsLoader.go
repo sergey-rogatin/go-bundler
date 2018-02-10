@@ -29,23 +29,23 @@ func LoadFile(src []byte, filePath string) ([]byte, []string, error) {
 	}
 
 	resultProgram, fileImports := transformIntoModule(initialProgram, filePath)
-	resultBytes := []byte(printAst(resultProgram))
+	resultBytes := []byte(generateJsCode(resultProgram))
 	return resultBytes, fileImports, nil
 }
 
 type context struct {
-	importedVars map[string]astNode
+	importedVars map[string]ast
 	parent       *context
 }
 
-func getImportedVariable(ctx *context, name astNode) astNode {
+func getImportedVariable(ctx *context, name ast) ast {
 	if v, ok := ctx.importedVars[name.value]; ok {
 		return v
 	}
 	return getImportedVariable(ctx.parent, name)
 }
 
-func transformIntoModule(src astNode, fileName string) (astNode, []string) {
+func transformIntoModule(src ast, fileName string) (ast, []string) {
 	fileImports := []string{}
 
 	var modifyAst,
@@ -53,9 +53,9 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 		modifyImport,
 		modifyExport,
 		modifyFunctionCall,
-		modifyMemberExpression func(astNode, *context) astNode
+		modifyMemberExpression func(ast, *context) ast
 
-	modifyAst = func(n astNode, ctx *context) astNode {
+	modifyAst = func(n ast, ctx *context) ast {
 		switch n.t {
 
 		case g_MEMBER_EXPRESSION:
@@ -81,7 +81,7 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 
 		default:
 			res := n
-			res.children = []astNode{}
+			res.children = []ast{}
 			for _, c := range n.children {
 				res.children = append(res.children, modifyAst(c, ctx))
 			}
@@ -89,8 +89,8 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 		}
 	}
 
-	modifyMemberExpression = func(n astNode, ctx *context) astNode {
-		children := []astNode{}
+	modifyMemberExpression = func(n ast, ctx *context) ast {
+		children := []ast{}
 		for _, c := range n.children {
 			children = append(children, modifyAst(c, ctx))
 		}
@@ -106,8 +106,8 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 		return n
 	}
 
-	modifyImport = func(n astNode, ctx *context) astNode {
-		children := []astNode{}
+	modifyImport = func(n ast, ctx *context) ast {
+		children := []ast{}
 		for _, c := range n.children {
 			children = append(children, modifyAst(c, ctx))
 		}
@@ -155,8 +155,8 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 		return makeNode(g_EMPTY_EXPRESSION, "")
 	}
 
-	modifyFunctionCall = func(n astNode, ctx *context) astNode {
-		children := []astNode{}
+	modifyFunctionCall = func(n ast, ctx *context) ast {
+		children := []ast{}
 		for _, c := range n.children {
 			children = append(children, modifyAst(c, ctx))
 		}
@@ -190,14 +190,14 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 		return n
 	}
 
-	modifyProgram = func(n astNode, ctx *context) astNode {
-		children := []astNode{}
+	modifyProgram = func(n ast, ctx *context) ast {
+		children := []ast{}
 		for _, c := range n.children {
 			children = append(children, modifyAst(c, ctx))
 		}
 		n.children = children
 
-		statements := []astNode{}
+		statements := []ast{}
 
 		// add var exports = {}
 		exportsObj := makeNode(g_NAME, "exports")
@@ -236,8 +236,8 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 		}
 	}
 
-	modifyExport = func(n astNode, ctx *context) astNode {
-		children := []astNode{}
+	modifyExport = func(n ast, ctx *context) ast {
+		children := []ast{}
 		for _, c := range n.children {
 			children = append(children, modifyAst(c, ctx))
 		}
@@ -246,7 +246,7 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 		vars := n.children[0].children
 		exportsObj := makeNode(g_NAME, "exports")
 
-		var member astNode
+		var member ast
 		pathNode := n.children[2]
 		if pathNode.value != "" {
 			resolvedPath := resolveES6ImportPath(pathNode.value, fileName)
@@ -259,11 +259,11 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 		}
 
 		if !(n.flags&f_EXPORT_ALL != 0) {
-			assignments := []astNode{}
+			assignments := []ast{}
 			for _, v := range vars {
 				exportedName := v.children[1]
 				left := makeNode(g_MEMBER_EXPRESSION, "", exportsObj, exportedName)
-				var right astNode
+				var right ast
 
 				if pathNode.value != "" {
 					property := v.children[0]
@@ -289,7 +289,7 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 		assign := makeNode(g_NAME, "assign")
 		funcName := makeNode(g_MEMBER_EXPRESSION, "", obj, assign)
 
-		args := []astNode{
+		args := []ast{
 			exportsObj,
 			member,
 		}
@@ -301,7 +301,7 @@ func transformIntoModule(src astNode, fileName string) (astNode, []string) {
 	}
 
 	ctx := context{}
-	ctx.importedVars = make(map[string]astNode)
+	ctx.importedVars = make(map[string]ast)
 	res := modifyAst(src, &ctx)
 
 	return res, fileImports
