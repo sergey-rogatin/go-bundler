@@ -25,7 +25,7 @@ var keywords = map[string]tokenType{
 	"instanceof": tINSTANCEOF,
 	"new":        tNEW,
 	"return":     tRETURN,
-	"super":      tSUPER,
+	// "super":      tSUPER,
 	"switch":     tSWITCH,
 	"this":       tTHIS,
 	"throw":      tTHROW,

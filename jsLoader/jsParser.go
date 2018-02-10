@@ -285,7 +285,15 @@ func parseExportStatement(p *parserState) ast {
 		var name ast
 		alias := makeNode(g_EXPORT_ALIAS, "default")
 
-		if accept(p, tFUNCTION) {
+		if accept(p, tCLASS) {
+			ce := parseClassExpression(p)
+			if ce.children[0].value != "" {
+				declaration = ce
+				name = ce.children[0]
+			} else {
+				name = ce
+			}
+		} else if accept(p, tFUNCTION) {
 			fe := parseFunctionExpression(p)
 			if fe.value != "" {
 				declaration = fe
@@ -341,6 +349,14 @@ func parseExportStatement(p *parserState) ast {
 		fs := parseFunctionDeclaration(p)
 		declaration = fs
 		name := makeNode(g_EXPORT_NAME, fs.value)
+		alias := name
+		ev := makeNode(g_EXPORT_VAR, "", name, alias)
+		vars = append(vars, ev)
+
+	} else if accept(p, tCLASS) {
+		ce := parseClassExpression(p)
+		declaration = ce
+		name := ce.children[0]
 		alias := name
 		ev := makeNode(g_EXPORT_VAR, "", name, alias)
 		vars = append(vars, ev)
