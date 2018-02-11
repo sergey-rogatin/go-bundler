@@ -4,3 +4,5 @@ debug
 node_modules
 package-lock.json
 .bundlecache
+go-bundler-src
+build
