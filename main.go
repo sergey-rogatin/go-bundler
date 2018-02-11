@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lvl5hm/go-bundler-src/jsLoader"
+	"github.com/lvl5hm/go-bundler/jsLoader"
 )
 
 type safeFile struct {
