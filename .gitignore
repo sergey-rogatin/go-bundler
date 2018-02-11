@@ -1,6 +1,7 @@
-test/
-.vscode/
-debug
 node_modules
-package-lock.json
-.bundlecache
+test
+go-bundler-src.exe
+config.json
+debug
+.go-bundler-cache
+build
