@@ -21,11 +21,5 @@
   "bugs": {
     "url": "https://github.com/lvl5hm/goBundler/issues"
   },
-  "homepage": "https://github.com/lvl5hm/goBundler#readme",
-  "dependencies": {
-    "react": "^16.2.0"
-  },
-  "devDependencies": {
-    "react-dom": "^16.2.0"
-  }
+  "homepage": "https://github.com/lvl5hm/goBundler#readme"
 }

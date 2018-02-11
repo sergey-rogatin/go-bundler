@@ -50,8 +50,9 @@ type fileCache struct {
 }
 
 type bundleCache struct {
-	Files map[string]fileCache
-	Lock  sync.RWMutex
+	Files   map[string]fileCache
+	DirName string
+	Lock    sync.RWMutex
 }
 
 func (c *bundleCache) read(fileName string) (fileCache, bool) {
@@ -69,6 +70,52 @@ func (c *bundleCache) write(fileName string, data fileCache) {
 	c.Files[fileName] = data
 }
 
+func (c *bundleCache) saveFile() {
+	if c.DirName == "" {
+		return
+	}
+
+	err := os.MkdirAll(c.DirName, 0666)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	saveFile, err := os.Create(c.DirName + "/cache")
+	if err != nil {
+		fmt.Println(err)
+		// fmt.Println("Error: cannot create save file for cache!")
+		return
+	}
+	defer saveFile.Close()
+
+	enc := gob.NewEncoder(saveFile)
+	err = enc.Encode(c.Files)
+	if err != nil {
+		fmt.Println("Error: cannot save cache to file!")
+	}
+	// fmt.Printf(">>Cache saved to %s\n", c.SaveFileName)
+}
+
+func (c *bundleCache) loadFile() {
+	saveFile, err := os.Open(c.DirName + "/cache")
+	if err != nil {
+		return
+	}
+	defer saveFile.Close()
+
+	dec := gob.NewDecoder(saveFile)
+
+	var files map[string]fileCache
+	err = dec.Decode(&files)
+	if err != nil {
+		fmt.Println("Error: cache file is corrupted!")
+		return
+	}
+
+	c.Files = files
+}
+
 type configJSON struct {
 	Entry        string
 	TemplateHTML string
@@ -77,6 +124,10 @@ type configJSON struct {
 	DevServer    struct {
 		Enable bool
 		Port   int
+	}
+	PermanentCache struct {
+		Enable  bool
+		DirName string
 	}
 }
 
@@ -106,14 +157,21 @@ func main() {
 	if config.DevServer.Port == 0 {
 		config.DevServer.Port = 8080
 	}
+	if config.PermanentCache.DirName == "" {
+		config.PermanentCache.DirName = ".go-bundler-cache"
+	}
 
 	// creating bundle
 	bundleName := filepath.Join(config.BundleDir, "bundle.js")
 
-	cache := loadCacheFromFile()
-	if cache == nil {
-		cache = &bundleCache{}
-		cache.Files = make(map[string]fileCache)
+	cache := &bundleCache{}
+	if config.PermanentCache.Enable {
+		cache.DirName = config.PermanentCache.DirName
+	}
+
+	cache.loadFile()
+	if cache.Files == nil {
+		cache.Files = map[string]fileCache{}
 	}
 
 	createBundle(config.Entry, bundleName, cache)
@@ -164,13 +222,13 @@ func createBundle(entryFileName, bundleFileName string, cache *bundleCache) {
 	err := addFilesToBundle([]string{entryFileName}, sf, cache)
 	sf.write(getJsBundleFileTail(entryFileName, cache))
 
-	go saveCacheToFile(cache)
-
 	if err == nil {
 		fmt.Printf("\n>>Build finished in %s\n", time.Since(buildStartTime))
 	} else {
 		fmt.Printf("\n>>%s\n", err)
 	}
+
+	cache.saveFile()
 }
 
 func getJsBundleFileTail(entryFileName string, cache *bundleCache) []byte {
@@ -206,43 +264,6 @@ func getJsBundleFileTail(entryFileName string, cache *bundleCache) []byte {
 	result := []byte(jsModuleOrder + "moduleOrder.forEach((moduleName)=>modules[moduleName]=moduleFns[moduleName]())")
 
 	return result
-}
-
-func saveCacheToFile(cache *bundleCache) {
-	saveFile, err := os.Create(".bundlecache")
-	if err != nil {
-		fmt.Println("Error: cannot create save file for cache!")
-		return
-	}
-	defer saveFile.Close()
-
-	enc := gob.NewEncoder(saveFile)
-	err = enc.Encode(cache.Files)
-	if err != nil {
-		fmt.Println("Error: cannot save cache to file!")
-	}
-}
-
-func loadCacheFromFile() *bundleCache {
-	saveFile, err := os.Open(".bundlecache")
-	if err != nil {
-		return nil
-	}
-	defer saveFile.Close()
-
-	dec := gob.NewDecoder(saveFile)
-
-	result := bundleCache{}
-	var files map[string]fileCache
-
-	err = dec.Decode(&files)
-	if err != nil {
-		fmt.Println("Error: cache file is corrupted!")
-		return nil
-	}
-
-	result.Files = files
-	return &result
 }
 
 func addFilesToBundle(
@@ -283,7 +304,20 @@ func addFileToBundle(
 ) {
 	var data []byte
 	var fileImports []string
-	var lastModTime time.Time
+
+	fileStats, err := os.Stat(resolvedPath)
+	if err != nil {
+		errorCh <- fileError{">>Error: cannot find file", resolvedPath}
+		return
+	}
+	lastModTime := fileStats.ModTime()
+
+	defer cache.write(resolvedPath, fileCache{
+		Data:        data,
+		Imports:     fileImports,
+		LastModTime: lastModTime,
+		IsReachable: true,
+	})
 
 	cache.Lock.Lock()
 	cachedFile, ok := cache.Files[resolvedPath]
@@ -293,17 +327,9 @@ func addFileToBundle(
 		return
 	}
 	cache.Files[resolvedPath] = fileCache{
-		LastModTime: lastModTime,
 		IsReachable: true,
 	}
 	cache.Lock.Unlock()
-
-	fileStats, err := os.Stat(resolvedPath)
-	if err != nil {
-		errorCh <- fileError{"cannot find file", resolvedPath}
-		return
-	}
-	lastModTime = fileStats.ModTime()
 
 	if ok && cachedFile.LastModTime == fileStats.ModTime() {
 		data = cachedFile.Data
@@ -334,12 +360,6 @@ func addFileToBundle(
 	}
 
 	bundleSf.write(data)
-	cache.write(resolvedPath, fileCache{
-		Data:        data,
-		Imports:     fileImports,
-		LastModTime: lastModTime,
-		IsReachable: true,
-	})
 
 	err = addFilesToBundle(fileImports, bundleSf, cache)
 	errorCh <- err
@@ -401,6 +421,7 @@ func watchBundledFiles(
 					continue
 				}
 				if file.LastModTime != stats.ModTime() {
+					fmt.Println(file.LastModTime)
 					createBundle(entryName, bundleName, cache)
 					break
 				}
