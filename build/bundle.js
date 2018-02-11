@@ -1,1 +1,0 @@
-var moduleFns={},modules={};var process={env:{NODE_ENV:'development'}};var moduleOrder = ['index_js'];moduleOrder.forEach((moduleName)=>modules[moduleName]=moduleFns[moduleName]())
