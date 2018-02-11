@@ -1,15 +1,12 @@
 {
   "name": "go-bundler",
   "bin": {
-    "go-bundler": "bin/goBundler.exe"
+    "go-bundler": "go-bundler.exe"
   },
-  "version": "0.0.9",
+  "version": "0.1.0",
   "description": "",
   "directories": {
     "test": "test"
-  },
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
