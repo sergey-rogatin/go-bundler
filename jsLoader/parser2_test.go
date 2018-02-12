@@ -19,7 +19,7 @@ func TestFunctionDeclaration(t *testing.T) {
 		exp string
 	}{
 		{
-			"foo();",
+			"var foo = () => {};",
 			"",
 		},
 	}
