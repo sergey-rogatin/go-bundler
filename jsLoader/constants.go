@@ -53,7 +53,7 @@ var keywords = map[string]tokenType{
 	"false":      tFALSE,
 	// "as":         tAS,
 	// "from":       tFROM,
-	// "of":         tOF,
+	"of": tOF,
 }
 
 var operators = map[string]tokenType{
@@ -167,7 +167,7 @@ const (
 	tFALSE
 	// tAS
 	// tFROM
-	// tOF
+	tOF
 
 	tBITWISE_NOT
 	tBITWISE_AND
@@ -227,6 +227,7 @@ const (
 	tHEX
 	tREGEXP
 	tESCAPE
+	tSPACE
 )
 
 var tokenTypeNames = []string{
@@ -283,7 +284,7 @@ var tokenTypeNames = []string{
 	"tFALSE",
 	// "tAS",
 	// "tFROM",
-	// "tOF",
+	"tOF",
 	"tBITWISE_NOT",
 	"tBITWISE_AND",
 	"tBITWISE_OR",
@@ -341,6 +342,7 @@ var tokenTypeNames = []string{
 	"tHEX",
 	"tREGEXP",
 	"tESCAPE",
+	"tSPACE",
 }
 
 func (t tokenType) String() string {
@@ -456,6 +458,21 @@ var nodeToString = []string{
 	"n_FOR_OF_STATEMENT",
 	"n_EMPTY_EXPRESSION",
 	"n_EMPTY_STATEMENT",
+	"n_OBJECT_METHOD",
+	"n_OBJECT_KEY",
+	"n_NON_IDENTIFIER_OBJECT_KEY",
+	"n_CALCULATED_OBJECT_KEY",
+	"n_SPREAD_ELEMENT",
+	"n_CONTROL_WORD",
+	"n_RETURN_STATEMENT",
+	"n_DECLARATION_STATEMENT",
+	"n_CLASS_STATEMENT",
+	"n_CLASS_EXPRESSION",
+	"n_CLASS_BODY",
+	"n_CLASS_METHOD",
+	"n_CLASS_PROPERTY",
+	"n_CLASS_STATIC_PROPERTY",
+	"n_LABEL",
 }
 
 func (n nodeType) String() string {
@@ -538,4 +555,22 @@ const (
 
 	n_EMPTY_EXPRESSION
 	n_EMPTY_STATEMENT
+
+	n_OBJECT_METHOD
+	n_OBJECT_KEY
+	n_NON_IDENTIFIER_OBJECT_KEY
+	n_CALCULATED_OBJECT_KEY
+	n_SPREAD_ELEMENT
+	n_CONTROL_WORD
+	n_RETURN_STATEMENT
+	n_DECLARATION_STATEMENT
+
+	n_CLASS_STATEMENT
+	n_CLASS_EXPRESSION
+	n_CLASS_BODY
+	n_CLASS_METHOD
+	n_CLASS_PROPERTY
+	n_CLASS_STATIC_PROPERTY
+
+	n_LABEL
 )

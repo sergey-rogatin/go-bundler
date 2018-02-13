@@ -54,10 +54,6 @@ func lex(src []byte) []token {
 	line := 1
 	column := 0
 
-	isWhitespace := func(c byte) bool {
-		return c == ' '
-	}
-
 	isStringParen := func(c byte) bool {
 		return c == '\'' || c == '"' || c == '`'
 	}
@@ -150,8 +146,9 @@ func lex(src []byte) []token {
 			line++
 			column = 0
 
-		case isWhitespace(c):
-			skip()
+		case c == ' ':
+			eat(tSPACE)
+			end()
 
 		case substr(i, i+2) == "//":
 			for c != '\n' {
