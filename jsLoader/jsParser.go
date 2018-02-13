@@ -1,1219 +1,1212 @@
 package jsLoader
 
-// type parserState struct {
-// 	sourceTokens                 []token
-// 	index                        int
-// 	tok                          token
-// 	globalFlagIsInsideForIn      bool
-// 	globalFlagPatternParsingFail bool
-// }
-
-// func parseTokens(localSrc []token) (ast, error) {
-// 	p := parserState{
-// 		sourceTokens: localSrc,
-// 		index:        0,
-// 		tok:          localSrc[0],
-// 	}
-
-// 	return parseProgram(&p)
-// }
-
-// const (
-// 	p_UNEXPECTED_TOKEN = iota
-// 	p_WRONG_ASSIGNMENT
-// 	p_UNNAMED_FUNCTION
-// )
-
-// type parsingError struct {
-// 	kind    int
-// 	tok     token
-// 	context []token
-// }
-
-// func (pe parsingError) Error() string {
-// 	switch pe.kind {
-// 	case p_UNEXPECTED_TOKEN:
-// 		return fmt.Sprintf(
-// 			"Unexpected token \"%s\" at %v:%v, %s",
-// 			pe.tok.lexeme, pe.tok.line, pe.tok.column, pe.context,
-// 		)
-
-// 	case p_UNNAMED_FUNCTION:
-// 		return fmt.Sprintf(
-// 			"Unnamed function declaration at %v:%v",
-// 			pe.tok.line, pe.tok.column,
-// 		)
-
-// 	case p_WRONG_ASSIGNMENT:
-// 		return fmt.Sprintf(
-// 			"Invalid left-hand side in assignment at %v:%v",
-// 			pe.tok.line, pe.tok.column,
-// 		)
-
-// 	default:
-// 		return "Unknown parser error"
-// 	}
-// }
-
-// // helper functions for parsing
-
-// func next(p *parserState) {
-// 	p.index++
-// 	if p.index < len(p.sourceTokens) {
-// 		p.tok = p.sourceTokens[p.index]
-// 	}
-// }
-
-// func backtrack(p *parserState, backIndex int) {
-// 	p.index = backIndex
-// 	p.tok = p.sourceTokens[p.index]
-// }
-
-// func test(p *parserState, tTypes ...tokenType) bool {
-// 	i := p.index
-// 	for p.sourceTokens[i].tType == tNEWLINE {
-// 		i++
-// 	}
-// 	for _, tType := range tTypes {
-// 		if p.sourceTokens[i].tType == tType {
-// 			return true
-// 		}
-// 	}
-// 	return false
-// }
-
-// func getNoNewline(p *parserState) token {
-// 	i := p.index
-// 	for p.sourceTokens[i].tType == tNEWLINE {
-// 		i++
-// 	}
-// 	return p.sourceTokens[i]
-// }
-
-// func accept(p *parserState, tTypes ...tokenType) bool {
-// 	prevPos := p.index
-// 	for p.tok.tType == tNEWLINE {
-// 		next(p)
-// 	}
-// 	if tTypes == nil {
-// 		next(p)
-// 		return true
-// 	}
-// 	for _, tType := range tTypes {
-// 		if p.tok.tType == tType {
-// 			next(p)
-// 			return true
-// 		}
-// 	}
-// 	backtrack(p, prevPos)
-// 	return false
-// }
-
-// func checkASI(p *parserState, tType tokenType) {
-// 	if tType == tSEMI {
-// 		if p.tok.tType == tNEWLINE {
-// 			next(p)
-// 			return
-// 		}
-// 		if p.tok.tType == tCURLY_RIGHT || p.tok.tType == tEND_OF_INPUT {
-// 			return
-// 		}
-// 	}
-// 	panic(parsingError{
-// 		p_UNEXPECTED_TOKEN, p.tok,
-// 		nil,
-// 	})
-// }
-
-// func expect(p *parserState, tType tokenType) {
-// 	if accept(p, tType) {
-// 		return
-// 	}
-// 	checkASI(p, tType)
-// }
-
-// func getLexeme(p *parserState) string {
-// 	return p.sourceTokens[p.index-1].lexeme
-// }
-
-// func getToken(p *parserState) token {
-// 	return p.sourceTokens[p.index-1]
-// }
-
-// func isValidPropertyName(name string) bool {
-// 	if len(name) == 0 {
-// 		return false
-// 	}
-// 	if !isLetter(name[0]) {
-// 		return false
-// 	}
-// 	for _, symbol := range name {
-// 		if !isLetter(byte(symbol)) && !isNumber(byte(symbol)) {
-// 			return false
-// 		}
-// 	}
-// 	return true
-// }
-
-// func parseProgram(p *parserState) (program ast, err error) {
-// 	err = nil
-
-// 	defer func() {
-// 		if r := recover(); r != nil {
-// 			if e, ok := r.(parsingError); ok {
-// 				err = e
-// 			}
-// 		}
-// 	}()
-
-// 	statements := []ast{}
-// 	for !accept(p, tEND_OF_INPUT) {
-// 		statements = append(statements, parseStatement(p))
-// 	}
-
-// 	program = makeNode(g_PROGRAM_STATEMENT, "", statements...)
-// 	return
-// }
-
-// func parseTryCatchStatement(p *parserState) ast {
-// 	var try, catch, finally, catchValue ast
-
-// 	expect(p, tCURLY_LEFT)
-// 	try = parseBlockStatement(p)
-// 	if accept(p, tCATCH) {
-// 		expect(p, tPAREN_LEFT)
-// 		catchValue = parseExpression(p)
-// 		expect(p, tPAREN_RIGHT)
-
-// 		expect(p, tCURLY_LEFT)
-// 		catch = parseBlockStatement(p)
-// 	}
-// 	if accept(p, tFINALLY) {
-// 		expect(p, tCURLY_LEFT)
-// 		finally = parseBlockStatement(p)
-// 	}
-
-// 	return makeNode(
-// 		g_TRY_CATCH_STATEMENT, "", try, catchValue, catch, finally,
-// 	)
-// }
-
-// func parseStatement(p *parserState) ast {
-// 	startPos := p.index
-// 	if accept(p, tNAME) {
-// 		markerName := getLexeme(p)
-// 		if accept(p, tCOLON) {
-// 			return makeNode(g_MARKER, markerName)
-// 		}
-// 		backtrack(p, startPos)
-// 	}
-
-// 	switch {
-// 	case accept(p, tCLASS):
-// 		return makeNode(g_CLASS_STATEMENT, "", parseClassExpression(p))
-// 	case accept(p, tTHROW):
-// 		return makeNode(g_THROW_STATEMENT, "", parseExpression(p))
-// 	case accept(p, tTRY):
-// 		return parseTryCatchStatement(p)
-// 	case accept(p, tVAR, tCONST, tLET):
-// 		return parseDeclarationStatement(p)
-// 	case accept(p, tRETURN):
-// 		return parseReturnStatement(p)
-// 	case accept(p, tIMPORT):
-// 		return parseImportStatement(p)
-// 	case accept(p, tFUNCTION):
-// 		return parseFunctionDeclaration(p)
-// 	case accept(p, tDO):
-// 		return parseDoWhileStatement(p)
-// 	case accept(p, tWHILE):
-// 		return parseWhileStatement(p)
-// 	case accept(p, tFOR):
-// 		return parseForStatement(p)
-// 	case accept(p, tCURLY_LEFT):
-// 		return parseBlockStatement(p)
-// 	case accept(p, tIF):
-// 		return parseIfStatement(p)
-// 	case accept(p, tEXPORT):
-// 		return parseExportStatement(p)
-// 	case accept(p, tSWITCH):
-// 		return parseSwitchStatement(p)
-// 	case accept(p, tSEMI):
-// 		return makeNode(g_EMPTY_STATEMENT, ";")
-// 	default:
-// 		return parseExpressionStatement(p)
-// 	}
-// }
-
-// func parseExportStatement(p *parserState) ast {
-// 	declaration := makeNode(g_EXPORT_DECLARATION, "")
-// 	path := makeNode(g_EXPORT_PATH, "")
-// 	vars := []ast{}
-// 	flags := 0
-
-// 	if accept(p, tDEFAULT) {
-
-// 		var name ast
-// 		alias := makeNode(g_EXPORT_ALIAS, "default")
-
-// 		if accept(p, tCLASS) {
-// 			ce := parseClassExpression(p)
-// 			if ce.children[0].value != "" {
-// 				declaration = ce
-// 				name = ce.children[0]
-// 			} else {
-// 				name = ce
-// 			}
-// 		} else if accept(p, tFUNCTION) {
-// 			fe := parseFunctionExpression(p)
-// 			if fe.value != "" {
-// 				declaration = fe
-// 				name = makeNode(g_EXPORT_NAME, fe.value)
-// 			} else {
-// 				name = fe
-// 			}
-// 		} else {
-// 			name = parseExpression(p)
-// 		}
-
-// 		ev := makeNode(g_EXPORT_VAR, "", name, alias)
-// 		vars = append(vars, ev)
-// 		expect(p, tSEMI)
-
-// 	} else if accept(p, tCURLY_LEFT) {
-// 		for !accept(p, tCURLY_RIGHT) {
-// 			if accept(p, tNAME) {
-// 				name := makeNode(g_EXPORT_NAME, getLexeme(p))
-// 				alias := name
-
-// 				if accept(p, tNAME) && getLexeme(p) == "as" {
-// 					next(p)
-// 					alias = makeNode(g_EXPORT_ALIAS, getLexeme(p))
-// 				}
-// 				ev := makeNode(g_EXPORT_VAR, "", name, alias)
-// 				vars = append(vars, ev)
-// 			}
-
-// 			if !accept(p, tCOMMA) {
-// 				expect(p, tCURLY_RIGHT)
-// 				break
-// 			}
-// 		}
-
-// 		if accept(p, tNAME) && getLexeme(p) == "from" {
-// 			expect(p, tSTRING)
-// 			path = makeNode(g_EXPORT_PATH, getLexeme(p))
-// 		}
-// 		expect(p, tSEMI)
-
-// 	} else if accept(p, tVAR, tLET, tCONST) {
-// 		declaration = parseDeclarationStatement(p)
-// 		for _, d := range declaration.children[0].children {
-// 			name := d.children[0]
-// 			alias := d.children[0]
-// 			ev := makeNode(g_EXPORT_VAR, "", name, alias)
-
-// 			vars = append(vars, ev)
-// 		}
-
-// 	} else if accept(p, tFUNCTION) {
-// 		fs := parseFunctionDeclaration(p)
-// 		declaration = fs
-// 		name := makeNode(g_EXPORT_NAME, fs.value)
-// 		alias := name
-// 		ev := makeNode(g_EXPORT_VAR, "", name, alias)
-// 		vars = append(vars, ev)
-
-// 	} else if accept(p, tCLASS) {
-// 		ce := parseClassExpression(p)
-// 		declaration = ce
-// 		name := ce.children[0]
-// 		alias := name
-// 		ev := makeNode(g_EXPORT_VAR, "", name, alias)
-// 		vars = append(vars, ev)
-
-// 	} else if accept(p, tMULT) {
-// 		expect(p, tNAME)
-// 		if getLexeme(p) != "from" {
-// 			checkASI(p, tSEMI)
-// 		}
-// 		expect(p, tSTRING)
-// 		path = makeNode(g_EXPORT_PATH, getLexeme(p))
-// 		flags = flags | f_EXPORT_ALL
-// 		expect(p, tSEMI)
-// 	}
-// 	varsNode := makeNode(g_EXPORT_VARS, "", vars...)
-
-// 	result := makeNode(g_EXPORT_STATEMENT, "", varsNode, declaration, path)
-// 	result.flags = flags
-// 	return result
-// }
-
-// func parseSwitchStatement(p *parserState) ast {
-// 	expect(p, tPAREN_LEFT)
-// 	condition := parseExpression(p)
-// 	expect(p, tPAREN_RIGHT)
-
-// 	cases := []ast{}
-// 	expect(p, tCURLY_LEFT)
-// 	for !accept(p, tCURLY_RIGHT) {
-// 		if accept(p, tCASE) {
-// 			caseTest := makeNode(g_SWITCH_CASE_TEST, "", parseExpression(p))
-// 			expect(p, tCOLON)
-// 			caseStatements := []ast{}
-// 			for !test(p, tDEFAULT, tCASE, tCURLY_RIGHT) {
-// 				caseStatements = append(caseStatements, parseStatement(p))
-// 			}
-// 			statementNode := makeNode(
-// 				g_SWITCH_CASE_STATEMENTS, "", caseStatements...,
-// 			)
-// 			switchCase := makeNode(
-// 				g_SWITCH_CASE, "", caseTest, statementNode,
-// 			)
-// 			cases = append(cases, switchCase)
-// 		}
-
-// 		if accept(p, tDEFAULT) {
-// 			expect(p, tCOLON)
-// 			caseStatements := []ast{}
-// 			for !test(p, tDEFAULT, tCASE, tCURLY_RIGHT) {
-// 				caseStatements = append(caseStatements, parseStatement(p))
-// 			}
-// 			defaultCase := makeNode(g_SWITCH_DEFAULT, "", caseStatements...)
-// 			cases = append(cases, defaultCase)
-// 		}
-// 	}
-
-// 	casesNode := makeNode(g_SWITCH_CASES, "", cases...)
-// 	return makeNode(g_SWITCH_STATEMENT, "", condition, casesNode)
-// }
-
-// func parseDeclarationStatement(p *parserState) ast {
-// 	decl := makeNode(
-// 		g_DECLARATION_STATEMENT, "", parseDeclarationExpression(p),
-// 	)
-// 	expect(p, tSEMI)
-// 	return decl
-// }
-
-// func parseDeclarationExpression(p *parserState) ast {
-// 	keyword := getLexeme(p)
-
-// 	ve := makeNode(g_DECLARATION_EXPRESSION, keyword, []ast{}...)
-// 	for ok := true; ok; ok = accept(p, tCOMMA) {
-// 		ve.children = append(ve.children, parseDeclarator(p))
-// 	}
-
-// 	return ve
-// }
-
-// func parseForStatement(p *parserState) ast {
-// 	expect(p, tPAREN_LEFT)
-// 	var init ast
-// 	if accept(p, tVAR, tLET, tCONST) {
-// 		init = parseDeclarationExpression(p)
-// 	} else if test(p, tSEMI) {
-// 		init = makeNode(g_EMPTY_EXPRESSION, "")
-// 	} else {
-// 		startPos := p.index
-// 		init = parseSequence(p)
-
-// 		// we accidentally parsed for in loop
-// 		if accept(p, tPAREN_RIGHT) {
-// 			backtrack(p, startPos)
-// 			p.globalFlagIsInsideForIn = true
-// 			init = parseSequence(p)
-// 			p.globalFlagIsInsideForIn = false
-// 		}
-// 	}
-
-// 	if accept(p, tNAME) && getLexeme(p) == "of" {
-// 		left := init
-// 		right := parseExpression(p)
-// 		expect(p, tPAREN_RIGHT)
-// 		body := parseStatement(p)
-// 		return makeNode(g_FOR_OF_STATEMENT, "", left, right, body)
-// 	} else if accept(p, tIN) {
-// 		left := init
-// 		right := parseExpression(p)
-// 		expect(p, tPAREN_RIGHT)
-// 		body := parseStatement(p)
-// 		return makeNode(g_FOR_IN_STATEMENT, "", left, right, body)
-// 	} else {
-// 		var test, final ast
-
-// 		expect(p, tSEMI)
-// 		if accept(p, tSEMI) {
-// 			test = makeNode(g_EMPTY_EXPRESSION, "")
-// 		} else {
-// 			test = parseExpression(p)
-// 			expect(p, tSEMI)
-// 		}
-
-// 		if accept(p, tPAREN_RIGHT) {
-// 			final = makeNode(g_EMPTY_EXPRESSION, "")
-// 		} else {
-// 			final = parseExpression(p)
-// 			expect(p, tPAREN_RIGHT)
-// 		}
-
-// 		body := parseStatement(p)
-
-// 		return makeNode(g_FOR_STATEMENT, "", init, test, final, body)
-// 	}
-// }
-
-// func parseIfStatement(p *parserState) ast {
-// 	expect(p, tPAREN_LEFT)
-// 	test := parseExpression(p)
-// 	expect(p, tPAREN_RIGHT)
-// 	body := parseStatement(p)
-// 	if accept(p, tELSE) {
-// 		alternate := parseStatement(p)
-// 		return makeNode(g_IF_STATEMENT, "", test, body, alternate)
-// 	}
-
-// 	return makeNode(g_IF_STATEMENT, "", test, body)
-// }
-
-// func parseWhileStatement(p *parserState) ast {
-// 	expect(p, tPAREN_LEFT)
-// 	test := parseExpression(p)
-// 	expect(p, tPAREN_RIGHT)
-// 	body := parseStatement(p)
-
-// 	return makeNode(g_WHILE_STATEMENT, "", test, body)
-// }
-
-// func parseDoWhileStatement(p *parserState) ast {
-// 	body := parseStatement(p)
-// 	expect(p, tWHILE)
-// 	expect(p, tPAREN_LEFT)
-// 	test := parseExpression(p)
-// 	expect(p, tPAREN_RIGHT)
-
-// 	return makeNode(g_DO_WHILE_STATEMENT, "", test, body)
-// }
-
-// func parseFunctionDeclaration(p *parserState) ast {
-// 	expect(p, tNAME)
-// 	name := getLexeme(p)
-
-// 	expect(p, tPAREN_LEFT)
-// 	params := parseFunctionParameters(p)
-// 	expect(p, tCURLY_LEFT)
-// 	body := parseBlockStatement(p)
-
-// 	return makeNode(g_FUNCTION_DECLARATION, name, params, body)
-// }
-
-// func parseExpressionStatement(p *parserState) ast {
-// 	if accept(p, tBREAK) {
-// 		return makeNode(g_BREAK_STATEMENT, "")
-// 	} else if accept(p, tCONTINUE) {
-// 		return makeNode(g_CONTINUE_STATEMENT, "")
-// 	} else if accept(p, tDEBUGGER) {
-// 		return makeNode(g_DEBUGGER_STATEMENT, "")
-// 	}
-// 	expr := makeNode(g_EXPRESSION_STATEMENT, "", parseExpression(p))
-// 	expect(p, tSEMI)
-// 	return expr
-// }
-
-// func parseReturnStatement(p *parserState) ast {
-// 	if accept(p, tSEMI) {
-// 		return makeNode(g_RETURN_STATEMENT, "")
-// 	}
-// 	expr := parseExpression(p)
-// 	return makeNode(g_RETURN_STATEMENT, "", expr)
-// }
-
-// func parseExpression(p *parserState) ast {
-// 	return parseSequence(p)
-// }
-
-// func parseSequence(p *parserState) ast {
-// 	firstItem := parseYield(p)
-
-// 	children := []ast{firstItem}
-// 	for accept(p, tCOMMA) {
-// 		children = append(children, parseYield(p))
-// 	}
-
-// 	if len(children) > 1 {
-// 		return makeNode(g_SEQUENCE_EXPRESSION, ",", children...)
-// 	}
-// 	return firstItem
-// }
-
-// func parseYield(p *parserState) ast {
-// 	if accept(p, tYIELD) {
-// 		return makeNode(g_EXPRESSION, "yield", parseYield(p))
-// 	}
-// 	return parseAssignment(p)
-// }
-
-// func parseAssignment(p *parserState) ast {
-// 	var left ast
-// 	startPos := p.index
-
-// 	if accept(p, tCURLY_LEFT) {
-// 		left = parseObjectPattern(p)
-// 	} else if accept(p, tBRACKET_LEFT) {
-// 		left = parseArrayPattern(p)
-// 	}
-
-// 	if left.t == g_INVALID_GRAMMAR {
-// 		backtrack(p, startPos)
-// 	} else if left.t != g_UNDEFINED {
-// 		if accept(p, tASSIGN) {
-// 			right := parseAssignment(p)
-// 			return makeNode(g_EXPRESSION, "=", left, right)
-// 		}
-// 		backtrack(p, startPos)
-// 	}
-
-// 	left = parseConditional(p)
-
-// 	if accept(p,
-// 		tASSIGN, tPLUS_ASSIGN, tMINUS_ASSIGN, tMULT_ASSIGN, tDIV_ASSIGN,
-// 		tBITWISE_SHIFT_LEFT_ASSIGN, tBITWISE_SHIFT_RIGHT_ASSIGN,
-// 		tBITWISE_SHIFT_RIGHT_ZERO_ASSIGN, tBITWISE_AND_ASSIGN,
-// 		tBITWISE_OR_ASSIGN, tBITWISE_XOR_ASSIGN,
-// 	) {
-// 		op := getLexeme(p)
-// 		right := parseAssignment(p)
-// 		return makeNode(g_EXPRESSION, op, left, right)
-// 	}
-
-// 	return left
-// }
-
-// func parseAssignmentPattern(p *parserState) ast {
-// 	var left ast
-
-// 	if accept(p, tBRACKET_LEFT) {
-// 		left = parseArrayPattern(p)
-// 	} else if accept(p, tCURLY_LEFT) {
-// 		left = parseObjectPattern(p)
-// 	} else if accept(p, tNAME) {
-// 		left = makeNode(g_OBJECT_LITERAL_PROPERTY_NAME, getLexeme(p))
-// 	} else {
-// 		return makeNode(g_INVALID_GRAMMAR, "")
-// 	}
-
-// 	if accept(p, tASSIGN) {
-// 		right := parseYield(p)
-// 		return makeNode(g_ASSIGNMENT_PATTERN, "=", left, right)
-// 	}
-
-// 	return left
-// }
-
-// func parseArrayPattern(p *parserState) ast {
-// 	properties := []ast{}
-
-// 	for !accept(p, tBRACKET_RIGHT) {
-// 		if accept(p, tCOMMA) {
-// 			properties = append(properties, makeNode(g_EMPTY_EXPRESSION, ""))
-// 			continue
-// 		}
-
-// 		prop := parseAssignmentPattern(p)
-// 		if prop.t == g_INVALID_GRAMMAR {
-// 			return prop
-// 		}
-// 		properties = append(properties, prop)
-
-// 		if !accept(p, tCOMMA) {
-// 			if !accept(p, tBRACKET_RIGHT) {
-// 				return makeNode(g_INVALID_GRAMMAR, "")
-// 			}
-// 			break
-// 		}
-// 	}
-
-// 	return makeNode(g_ARRAY_PATTERN, "", properties...)
-// }
-
-// func parseClassExpression(p *parserState) ast {
-// 	var name, extends, body ast
-
-// 	if accept(p, tNAME) {
-// 		name = makeNode(g_VARIABLE_NAME, getLexeme(p))
-// 	}
-
-// 	if accept(p, tEXTENDS) {
-// 		extends = parseYield(p)
-// 	}
-
-// 	expect(p, tCURLY_LEFT)
-
-// 	props := []ast{}
-
-// 	for !accept(p, tCURLY_RIGHT) {
-// 		isStatic := false
-
-// 		if accept(p, tSTATIC) {
-// 			isStatic = true
-// 		}
-
-// 		if accept(p, tNAME) {
-// 			name := makeNode(g_OBJECT_LITERAL_PROPERTY_NAME, getLexeme(p))
-// 			var prop ast
-
-// 			if test(p, tPAREN_LEFT) {
-// 				prop = makeNode(g_CLASS_METHOD, "", name, parseMemberFunction(p))
-// 			} else if accept(p, tASSIGN) {
-// 				prop = makeNode(g_CLASS_PROPERTY, "", name, parseExpression(p))
-// 			} else {
-// 				prop = makeNode(g_CLASS_PROPERTY, "", name)
-// 			}
-
-// 			if isStatic {
-// 				prop = makeNode(g_CLASS_STATIC_PROP, "", prop)
-// 			}
-// 			props = append(props, prop)
-
-// 			expect(p, tSEMI)
-// 		}
-// 	}
-// 	body = makeNode(g_BLOCK_STATEMENT, "", props...)
-
-// 	return makeNode(g_CLASS_EXPRESSION, "", name, extends, body)
-// }
-
-// func parseObjectPattern(p *parserState) ast {
-// 	properties := []ast{}
-// 	for !accept(p, tCURLY_RIGHT) {
-// 		if accept(p, tSPREAD) {
-// 			if !accept(p, tNAME) {
-// 				return makeNode(g_INVALID_GRAMMAR, "")
-// 			}
-// 			name := makeNode(g_OBJECT_LITERAL_PROPERTY_NAME, getLexeme(p))
-// 			properties = append(
-// 				properties, makeNode(g_REST_EXPRESSION, "", name),
-// 			)
-// 		} else if accept(p, tNAME) {
-// 			prop := makeNode(g_OBJECT_PROPERTY, "", []ast{}...)
-// 			key := makeNode(g_OBJECT_LITERAL_PROPERTY_NAME, getLexeme(p))
-// 			prop.children = append(prop.children, key)
-
-// 			if accept(p, tCOLON) {
-// 				val := parseAssignmentPattern(p)
-// 				if val.t == g_INVALID_GRAMMAR {
-// 					return val
-// 				}
-// 				prop.children = append(prop.children, val)
-// 			}
-
-// 			properties = append(properties, prop)
-// 		}
-
-// 		if !accept(p, tCOMMA) {
-// 			if !accept(p, tCURLY_RIGHT) {
-// 				return makeNode(g_INVALID_GRAMMAR, "")
-// 			}
-// 			break
-// 		}
-// 	}
-
-// 	return makeNode(g_OBJECT_PATTERN, "", properties...)
-// }
-
-// func parseConditional(p *parserState) ast {
-// 	test := parseBinary(p)
-
-// 	if accept(p, tQUESTION) {
-// 		consequent := parseConditional(p)
-// 		expect(p, tCOLON)
-// 		alternate := parseConditional(p)
-// 		return makeNode(g_CONDITIONAL_EXPRESSION, "?", test, consequent, alternate)
-// 	}
-
-// 	return test
-// }
-
-// func parseBinary(p *parserState) ast {
-// 	opStack := make([]token, 0)
-// 	outputStack := make([]ast, 0)
-// 	var root *ast
-
-// 	addNode := func(t token) {
-// 		right := outputStack[len(outputStack)-1]
-// 		left := outputStack[len(outputStack)-2]
-// 		nn := makeNode(g_EXPRESSION, t.lexeme, left, right)
-
-// 		outputStack = outputStack[:len(outputStack)-2]
-// 		outputStack = append(outputStack, nn)
-// 		root = &nn
-// 	}
-
-// 	for {
-// 		outputStack = append(outputStack, parsePrefixUnary(p))
-
-// 		op, ok := operatorTable[p.tok.tType]
-// 		if !ok || (p.globalFlagIsInsideForIn && p.tok.tType == tIN) {
-// 			break
-// 		}
-
-// 		for {
-// 			if len(opStack) > 0 {
-// 				opToken := opStack[len(opStack)-1]
-
-// 				opFromStack := operatorTable[opToken.tType]
-// 				if opFromStack.precedence > op.precedence || (opFromStack.precedence == op.precedence && !op.isRightAssociative) {
-// 					addNode(opToken)
-// 					opStack = opStack[:len(opStack)-1]
-// 				} else {
-// 					break
-// 				}
-// 			} else {
-// 				break
-// 			}
-// 		}
-// 		opStack = append(opStack, p.tok)
-// 		next(p)
-// 	}
-
-// 	for i := len(opStack) - 1; i >= 0; i-- {
-// 		addNode(opStack[i])
-// 	}
-
-// 	if root != nil {
-// 		return *root
-// 	}
-// 	return outputStack[len(outputStack)-1]
-// }
-
-// func parsePrefixUnary(p *parserState) ast {
-// 	if accept(p,
-// 		tNOT, tBITWISE_NOT, tPLUS, tMINUS,
-// 		tINC, tDEC, tTYPEOF, tVOID, tDELETE,
-// 	) {
-// 		return makeNode(
-// 			g_UNARY_PREFIX_EXPRESSION, getLexeme(p), parsePrefixUnary(p),
-// 		)
-// 	}
-
-// 	return parsePostfixUnary(p)
-// }
-
-// func parsePostfixUnary(p *parserState) ast {
-// 	value := parseFunctionCallOrMember(p, false)
-
-// 	if accept(p, tINC, tDEC) {
-// 		return makeNode(g_UNARY_POSTFIX_EXPRESSION, getLexeme(p), value)
-// 	}
-
-// 	return value
-// }
-
-// func parseFunctionArgs(p *parserState) ast {
-// 	args := []ast{}
-
-// 	for !accept(p, tPAREN_RIGHT) {
-// 		args = append(args, parseExpression(p))
-
-// 		if !accept(p, tCOMMA) {
-// 			expect(p, tPAREN_RIGHT)
-// 			break
-// 		}
-// 	}
-
-// 	argsNode := makeNode(g_FUNCTION_ARGS, "", args...)
-
-// 	return argsNode
-// }
-
-// func parseFunctionCallOrMember(p *parserState, onlyMember bool) ast {
-// 	funcName := parseConstructorCall(p)
-
-// 	for {
-// 		if !onlyMember && accept(p, tPAREN_LEFT) {
-// 			argsNode := parseFunctionArgs(p)
-// 			n := makeNode(g_FUNCTION_CALL, "", funcName, argsNode)
-
-// 			funcName = n
-// 		} else {
-// 			var property ast
-
-// 			if accept(p, tDOT) {
-// 				expect(p, tNAME)
-// 				property = makeNode(g_VARIABLE_NAME, getLexeme(p))
-// 			} else if accept(p, tBRACKET_LEFT) {
-// 				property = parseCalculatedPropertyName(p)
-// 			} else {
-// 				break
-// 			}
-// 			object := funcName
-
-// 			me := makeNode(g_MEMBER_EXPRESSION, "", object, property)
-// 			funcName = me
-// 		}
-// 	}
-
-// 	return funcName
-// }
-
-// func parseConstructorCall(p *parserState) ast {
-// 	if accept(p, tNEW) {
-// 		name := parseFunctionCallOrMember(p, true)
-// 		if accept(p, tPAREN_LEFT) {
-// 			return makeNode(
-// 				g_CONSTRUCTOR_CALL, "", name, parseFunctionArgs(p),
-// 			)
-// 		}
-// 		return makeNode(g_CONSTRUCTOR_CALL, "", name)
-// 	}
-
-// 	return parseAtom(p)
-// }
-
-// func parseAtom(p *parserState) ast {
-// 	switch {
-// 	case accept(p, tCLASS):
-// 		return parseClassExpression(p)
-// 	case accept(p, tDIV):
-// 		return parseRegexp(p)
-// 	case accept(p, tHEX):
-// 		return makeNode(g_HEX_LITERAL, getLexeme(p))
-// 	case accept(p, tPAREN_LEFT):
-// 		return parseParensOrLambda(p)
-// 	case accept(p, tCURLY_LEFT):
-// 		return parseObjectLiteral(p)
-// 	case accept(p, tFUNCTION):
-// 		return parseFunctionExpression(p)
-// 	case accept(p, tBRACKET_LEFT):
-// 		return parseArrayLiteral(p)
-// 	case accept(p, tNAME):
-// 		return parseLambdaOrName(p)
-// 	case accept(p, tNUMBER):
-// 		return makeNode(g_NUMBER_LITERAL, getLexeme(p))
-// 	case accept(p, tSTRING):
-// 		return makeNode(g_STRING_LITERAL, getLexeme(p))
-// 	case accept(p, tNULL):
-// 		return makeNode(g_NULL, getLexeme(p))
-// 	case accept(p, tUNDEFINED):
-// 		return makeNode(g_UNDEFINED, getLexeme(p))
-// 	case accept(p, tTRUE, tFALSE):
-// 		return makeNode(g_BOOL_LITERAL, getLexeme(p))
-// 	case accept(p, tTHIS):
-// 		return makeNode(g_THIS, getLexeme(p))
-
-// 	default:
-// 		checkASI(p, tSEMI)
-// 	}
-// 	return ast{}
-// }
-
-// func parseRegexp(p *parserState) ast {
-// 	value := "/"
-// 	for {
-// 		if accept(p, tDIV) {
-// 			if p.sourceTokens[p.index-2].tType != tESCAPE {
-// 				break
-// 			} else {
-// 				value += getLexeme(p)
-// 			}
-// 		}
-// 		next(p)
-// 		value += getLexeme(p)
-// 	}
-// 	value += "/"
-// 	if accept(p, tNAME) {
-// 		value += getLexeme(p)
-// 	}
-
-// 	return makeNode(g_REGEXP_LITERAL, value)
-// }
-
-// func parseParensOrLambda(p *parserState) ast {
-// 	prevPos := p.index
-
-// 	params := parseFunctionParameters(p)
-
-// 	if accept(p, tLAMBDA) {
-// 		var body ast
-// 		if accept(p, tCURLY_LEFT) {
-// 			body = parseBlockStatement(p)
-// 		} else {
-// 			body = parseYield(p)
-// 		}
-// 		return makeNode(g_LAMBDA_EXPRESSION, "", params, body)
-// 	}
-
-// 	backtrack(p, prevPos)
-
-// 	var value ast
-// 	if !accept(p, tPAREN_RIGHT) {
-// 		value = parseExpression(p)
-// 		expect(p, tPAREN_RIGHT)
-// 	}
-
-// 	return makeNode(g_PARENS_EXPRESSION, "", value)
-// }
-
-// func parseFunctionParameters(p *parserState) ast {
-// 	startPos := p.index
-
-// 	result := ast{g_FUNCTION_PARAMETERS, "", nil, 0}
-// 	params := []ast{}
-// 	for !accept(p, tPAREN_RIGHT) {
-// 		params = append(params, parseFunctionParameter(p))
-
-// 		if !accept(p, tCOMMA) {
-// 			if !accept(p, tPAREN_RIGHT) {
-// 				backtrack(p, startPos)
-// 				return result
-// 			}
-// 			break
-// 		}
-// 	}
-// 	result.children = params
-// 	return result
-// }
-
-// func parseFunctionExpression(p *parserState) ast {
-// 	name := ""
-// 	if accept(p, tNAME) {
-// 		name = getLexeme(p)
-// 	}
-
-// 	expect(p, tPAREN_LEFT)
-// 	params := parseFunctionParameters(p)
-// 	expect(p, tCURLY_LEFT)
-// 	body := parseBlockStatement(p)
-
-// 	return makeNode(g_FUNCTION_EXPRESSION, name, params, body)
-// }
-
-// func parseObjectLiteral(p *parserState) ast {
-// 	props := []ast{}
-
-// 	for !accept(p, tCURLY_RIGHT) {
-// 		prop := ast{g_OBJECT_PROPERTY, "", []ast{}, 0}
-// 		var key, value ast
-
-// 		if accept(p, tSPREAD) {
-// 			expr := parseYield(p)
-// 			prop = makeNode(g_SPREAD_EXPRESSION, "", expr)
-// 		} else {
-// 			if getNoNewline(p).lexeme == "get" {
-// 				accept(p, tNAME)
-// 				prop.value = getLexeme(p)
-// 			} else if getNoNewline(p).lexeme == "set" {
-// 				accept(p, tNAME)
-// 				prop.value = getLexeme(p)
-// 			}
-
-// 			if accept(p, tNAME) {
-// 				key = makeNode(g_OBJECT_LITERAL_PROPERTY_NAME, getLexeme(p))
-// 			} else if accept(p, tBRACKET_LEFT) {
-// 				key = parseCalculatedPropertyName(p)
-// 			} else if isValidPropertyName(getNoNewline(p).lexeme) || test(p, tNUMBER, tSTRING) {
-// 				accept(p)
-// 				key = makeNode(g_VALID_PROPERTY_NAME, getLexeme(p))
-// 			}
-// 			prop.children = append(prop.children, key)
-
-// 			if test(p, tPAREN_LEFT) {
-// 				value = parseMemberFunction(p)
-// 				prop.children = append(prop.children, value)
-// 			} else if accept(p, tCOLON) {
-// 				value = parseYield(p)
-// 				prop.children = append(prop.children, value)
-// 			}
-// 		}
-
-// 		props = append(props, prop)
-// 		if !accept(p, tCOMMA) {
-// 			expect(p, tCURLY_RIGHT)
-// 			break
-// 		}
-// 	}
-
-// 	return makeNode(g_OBJECT_LITERAL, "", props...)
-// }
-
-// func parseMemberFunction(p *parserState) ast {
-// 	f := parseFunctionExpression(p)
-// 	f.t = g_MEMBER_FUNCTION
-// 	return f
-// }
-
-// func parseArrayLiteral(p *parserState) ast {
-// 	values := []ast{}
-
-// 	for !accept(p, tBRACKET_RIGHT) {
-// 		if accept(p, tCOMMA) {
-// 			values = append(values, makeNode(g_EMPTY_EXPRESSION, ""))
-// 			continue
-// 		}
-// 		if accept(p, tSPREAD) {
-// 			values = append(
-// 				values,
-// 				makeNode(g_SPREAD_EXPRESSION, "", parseYield(p)),
-// 			)
-// 		} else {
-// 			values = append(values, parseYield(p))
-// 		}
-
-// 		if !accept(p, tCOMMA) {
-// 			expect(p, tBRACKET_RIGHT)
-// 			break
-// 		}
-// 	}
-
-// 	return makeNode(g_ARRAY_LITERAL, "", values...)
-// }
-
-// func parseLambdaOrName(p *parserState) ast {
-// 	firstParamStr := getLexeme(p)
-
-// 	if accept(p, tLAMBDA) {
-// 		var body ast
-// 		if accept(p, tCURLY_LEFT) {
-// 			body = parseBlockStatement(p)
-// 		} else {
-// 			body = parseYield(p)
-// 		}
-// 		params := makeNode(
-// 			g_FUNCTION_PARAMETERS, "",
-// 			makeNode(g_VARIABLE_NAME, firstParamStr),
-// 		)
-// 		return makeNode(g_LAMBDA_EXPRESSION, "", params, body)
-// 	}
-
-// 	return makeNode(g_VARIABLE_NAME, firstParamStr)
-// }
-
-// func parseBlockStatement(p *parserState) ast {
-// 	statements := []ast{}
-// 	for !accept(p, tCURLY_RIGHT) {
-// 		statements = append(statements, parseStatement(p))
-// 	}
-// 	return makeNode(g_BLOCK_STATEMENT, "", statements...)
-// }
-
-// func parseFunctionParameter(p *parserState) ast {
-// 	if accept(p, tSPREAD) {
-// 		var expr ast
-// 		if accept(p, tBRACKET_LEFT) {
-// 			expr = parseArrayPattern(p)
-// 		} else if accept(p, tCURLY_LEFT) {
-// 			expr = parseObjectPattern(p)
-// 		} else if accept(p, tNAME) {
-// 			expr = makeNode(g_VARIABLE_NAME, getLexeme(p))
-// 		}
-// 		return makeNode(g_REST_EXPRESSION, "", expr)
-// 	}
-// 	n := parseAssignmentPattern(p)
-// 	return n
-// }
-
-// func parseDeclarator(p *parserState) ast {
-// 	var left ast
-// 	if accept(p, tCURLY_LEFT) {
-// 		left = parseObjectPattern(p)
-// 	} else if accept(p, tNAME) {
-// 		left = makeNode(g_VARIABLE_NAME, getLexeme(p))
-// 	} else {
-// 		return left
-// 	}
-
-// 	if accept(p, tASSIGN) {
-// 		right := parseAssignment(p)
-// 		return makeNode(g_DECLARATOR, "", left, right)
-// 	}
-
-// 	return makeNode(g_DECLARATOR, "", left)
-// }
-
-// func parseCalculatedPropertyName(p *parserState) ast {
-// 	value := parseExpression(p)
-// 	expect(p, tBRACKET_RIGHT)
-// 	return makeNode(g_CALCULATED_PROPERTY_NAME, "", value)
-// }
-
-// func parseImportStatement(p *parserState) ast {
-// 	vars := ast{g_IMPORT_VARS, "", []ast{}, 0}
-// 	all := ast{t: g_IMPORT_ALL}
-// 	path := ast{t: g_IMPORT_PATH}
-
-// 	if accept(p, tMULT) {
-// 		expect(p, tNAME)
-// 		if getLexeme(p) != "as" {
-// 			checkASI(p, tSEMI)
-// 		}
-// 		expect(p, tNAME)
-// 		all.value = getLexeme(p)
-
-// 		expect(p, tNAME)
-// 		if getLexeme(p) != "from" {
-// 			checkASI(p, tSEMI)
-// 		}
-// 	} else {
-// 		if accept(p, tNAME) {
-// 			name := makeNode(g_IMPORT_NAME, "default")
-// 			alias := makeNode(g_IMPORT_ALIAS, getLexeme(p))
-
-// 			varNode := makeNode(g_IMPORT_VAR, "", name, alias)
-// 			vars.children = append(vars.children, varNode)
-
-// 			if accept(p, tCOMMA) {
-// 				if accept(p, tMULT) {
-// 					expect(p, tNAME)
-// 					if getLexeme(p) != "as" {
-// 						checkASI(p, tSEMI)
-// 					}
-
-// 					expect(p, tNAME)
-// 					all.value = getLexeme(p)
-
-// 					expect(p, tNAME)
-// 					if getLexeme(p) != "from" {
-// 						checkASI(p, tSEMI)
-// 					}
-// 				}
-// 			} else {
-// 				expect(p, tNAME)
-// 				if getLexeme(p) != "from" {
-// 					checkASI(p, tSEMI)
-// 				}
-// 			}
-// 		}
-
-// 		if accept(p, tCURLY_LEFT) {
-// 			for !accept(p, tCURLY_RIGHT) {
-// 				if accept(p, tNAME, tDEFAULT) {
-// 					name := makeNode(g_IMPORT_NAME, getLexeme(p))
-// 					alias := makeNode(g_IMPORT_ALIAS, getLexeme(p))
-
-// 					if accept(p, tNAME) && getLexeme(p) == "as" {
-// 						expect(p, tNAME)
-// 						alias = makeNode(g_IMPORT_ALIAS, getLexeme(p))
-// 					}
-
-// 					varNode := makeNode(g_IMPORT_VAR, "", name, alias)
-// 					vars.children = append(vars.children, varNode)
-// 				}
-
-// 				if !accept(p, tCOMMA) {
-// 					expect(p, tCURLY_RIGHT)
-// 					break
-// 				}
-// 			}
-
-// 			expect(p, tNAME)
-// 			if getLexeme(p) != "from" {
-// 				checkASI(p, tSEMI)
-// 			}
-// 		}
-// 	}
-
-// 	expect(p, tSTRING)
-// 	path.value = getLexeme(p)
-// 	expect(p, tSEMI)
-
-// 	return makeNode(g_IMPORT_STATEMENT, "", vars, all, path)
-// }
+import (
+	"fmt"
+)
+
+type ast struct {
+	t        nodeType
+	value    string
+	children []ast
+}
+
+const (
+	f_ACCEPT_NO_FUNCTION_CALL = 1 << 0
+	f_ACCEPT_NO_IN            = 1 << 1
+)
+
+func (a ast) String() string {
+	result := "{" + fmt.Sprint(a.t)
+	if a.value != "" {
+		result += ", " + a.value
+	}
+	if a.children != nil {
+		result += ", " + fmt.Sprint(a.children)
+	}
+	result += "}"
+	return result
+}
+
+func makeNode(t nodeType, value string, children ...ast) ast {
+	return ast{t, value, children}
+}
+
+var INVALID_NODE = ast{t: n_INVALID}
+
+type parser struct {
+	tokens []token
+	i      int
+
+	node      ast
+	flags     int
+	lastIndex int
+}
+
+func (p *parser) testFlag(f int) bool {
+	return (p.flags & f) != 0
+}
+
+func (p *parser) getNext() token {
+	i := p.i
+	for p.tokens[i].tType == tSPACE ||
+		p.tokens[i].tType == tNEWLINE {
+		i++
+	}
+	return p.tokens[i]
+}
+
+func (p *parser) tNext() {
+	for p.tokens[p.i].tType == tSPACE ||
+		p.tokens[p.i].tType == tNEWLINE {
+		p.i++
+	}
+	p.i++
+	// p.lastToken = p.tokens[p.i]
+}
+
+func (p *parser) expectT(tTypes ...tokenType) {
+	if !p.acceptT(tTypes...) {
+		i := p.i
+		for p.tokens[i].tType == tSPACE ||
+			p.tokens[i].tType == tNEWLINE {
+			i++
+		}
+		p.lastIndex = i
+		p.checkASI()
+	}
+}
+
+func (p *parser) acceptT(tTypes ...tokenType) bool {
+	i := p.i
+	for p.tokens[i].tType == tSPACE ||
+		p.tokens[i].tType == tNEWLINE {
+		i++
+	}
+
+	tok := p.tokens[i]
+
+	for _, tType := range tTypes {
+		if tok.tType == tType {
+			p.tNext()
+			return true
+		}
+	}
+
+	return false
+}
+
+type parseFunc func(*parser) ast
+
+func (p *parser) acceptF(f parseFunc) bool {
+	prevIndex := p.i
+
+	n := f(p)
+	if n.t == n_INVALID {
+		p.i = prevIndex
+		return false
+	}
+
+	p.node = n
+	return true
+}
+
+func (p *parser) getNode() ast {
+	return p.node
+}
+
+func (p *parser) getLexeme() string {
+	return p.tokens[p.i-1].lexeme
+}
+
+func (p *parser) expectF(f parseFunc) ast {
+	if !p.acceptF(f) {
+		p.checkASI()
+	}
+	return p.getNode()
+}
+
+func (p *parser) checkASI() {
+	i := p.i
+	for p.tokens[i].tType == tSPACE {
+		i++
+	}
+	if p.tokens[i].tType == tNEWLINE ||
+		p.tokens[i].tType == tCURLY_RIGHT {
+		return
+	}
+	if p.tokens[i].tType == tEND_OF_INPUT {
+		return
+	}
+
+	panic(p.tokens[p.lastIndex])
+}
+
+func program(p *parser) ast {
+	statements := []ast{}
+	for !p.acceptT(tEND_OF_INPUT) {
+		statements = append(statements, p.expectF(statement))
+	}
+	return makeNode(n_PROGRAM, "", statements...)
+}
+
+func statement(p *parser) ast {
+	if p.acceptT(tSEMI) {
+		return makeNode(n_EMPTY_STATEMENT, "")
+	} else if p.acceptF(declarationStatement) ||
+		p.acceptF(classStatement) ||
+		p.acceptF(blockStatement) ||
+		p.acceptF(doWhileStatement) ||
+		p.acceptF(whileStatement) ||
+		p.acceptF(ifStatement) ||
+		p.acceptF(forInOfStatement) ||
+		p.acceptF(forStatement) ||
+		p.acceptF(exportStatement) ||
+		p.acceptF(importStatement) ||
+		p.acceptF(functionDeclaration) ||
+		p.acceptF(expressionStatement) {
+		return p.getNode()
+	}
+
+	return INVALID_NODE
+}
+
+func importStatement(p *parser) ast {
+	if !p.acceptT(tIMPORT) {
+		return INVALID_NODE
+	}
+
+	var vars, all, path ast
+	all.t = n_IMPORT_ALL
+	path.t = n_IMPORT_PATH
+
+	if p.acceptT(tMULT) {
+		p.tNext()
+		if p.getLexeme() != "as" {
+			return INVALID_NODE
+		}
+
+		p.expectF(identifier)
+		all.value = p.getLexeme()
+
+		p.tNext()
+		if p.getLexeme() != "from" {
+			return INVALID_NODE
+		}
+	} else {
+		if p.acceptT(tNAME) {
+			name := makeNode(n_IMPORT_NAME, "default")
+			alias := makeNode(n_IMPORT_ALIAS, p.getLexeme())
+
+			varNode := makeNode(n_IMPORT_VAR, "", name, alias)
+			vars.children = append(vars.children, varNode)
+
+			if p.acceptT(tCOMMA) {
+				if p.acceptT(tMULT) {
+					p.tNext()
+					if p.getLexeme() != "as" {
+						return INVALID_NODE
+					}
+
+					p.expectF(identifier)
+					all.value = p.getLexeme()
+
+					p.tNext()
+					if p.getLexeme() != "from" {
+						return INVALID_NODE
+					}
+				}
+			} else {
+				p.tNext()
+				if p.getLexeme() != "from" {
+					return INVALID_NODE
+				}
+			}
+		}
+
+		if p.acceptT(tCURLY_LEFT) {
+			for !p.acceptT(tCURLY_RIGHT) {
+				if p.acceptT(tNAME, tDEFAULT) {
+					name := makeNode(n_IMPORT_NAME, p.getLexeme())
+					alias := makeNode(n_IMPORT_ALIAS, p.getLexeme())
+
+					if p.acceptT(tNAME) && p.getLexeme() == "as" {
+						p.tNext()
+						alias = makeNode(n_IMPORT_ALIAS, p.getLexeme())
+					}
+
+					varNode := makeNode(n_IMPORT_VAR, "", name, alias)
+					vars.children = append(vars.children, varNode)
+				}
+
+				if !p.acceptT(tCOMMA) {
+					p.expectT(tCURLY_RIGHT)
+					break
+				}
+			}
+
+			p.tNext()
+			if p.getLexeme() != "from" {
+				return INVALID_NODE
+			}
+		}
+	}
+
+	p.expectT(tSTRING)
+	path.value = p.getLexeme()
+	p.expectT(tSEMI)
+
+	return makeNode(n_IMPORT_STATEMENT, "", vars, all, path)
+}
+
+func declarationStatement(p *parser) ast {
+	if !p.acceptF(varDeclaration) {
+		return INVALID_NODE
+	}
+	p.expectT(tSEMI)
+	return makeNode(n_DECLARATION_STATEMENT, "", p.getNode())
+}
+
+func expressionStatement(p *parser) ast {
+	if p.acceptT(tRETURN) {
+		if p.acceptF(sequenceExpression) {
+			return makeNode(n_RETURN_STATEMENT, "", p.getNode())
+		}
+		return makeNode(n_RETURN_STATEMENT, "")
+	}
+
+	if p.acceptT(tBREAK, tCONTINUE, tDEBUGGER) {
+		res := makeNode(
+			n_EXPRESSION_STATEMENT, "",
+			makeNode(n_CONTROL_WORD, p.getLexeme()),
+		)
+		p.expectT(tSEMI)
+		return res
+	}
+
+	if !(p.acceptF(varDeclaration) ||
+		p.acceptF(sequenceExpression)) {
+		return INVALID_NODE
+	}
+	p.expectT(tSEMI)
+	return makeNode(n_EXPRESSION_STATEMENT, "", p.getNode())
+}
+
+func varDeclaration(p *parser) ast {
+	if !p.acceptT(tVAR, tCONST, tLET) {
+		return INVALID_NODE
+	}
+	kind := p.getLexeme()
+
+	declarators := []ast{}
+	for ok := true; ok; ok = p.acceptT(tCOMMA) {
+		declarators = append(declarators, p.expectF(declarator))
+	}
+	return makeNode(n_VARIABLE_DECLARATION, kind, declarators...)
+}
+
+func declarator(p *parser) ast {
+	if !p.acceptF(identifier) &&
+		!p.acceptF(objectPattern) {
+		return INVALID_NODE
+	}
+	var name, value ast
+	name = p.getNode()
+
+	if p.acceptT(tASSIGN) {
+		value = p.expectF(assignmentExpression)
+	}
+
+	return makeNode(n_DECLARATOR, "", name, value)
+}
+
+func expression(p *parser) ast {
+	return INVALID_NODE
+}
+
+func sequenceExpression(p *parser) ast {
+	if !p.acceptF(assignmentExpression) {
+		return INVALID_NODE
+	}
+	first := p.getNode()
+
+	if p.acceptT(tCOMMA) {
+		items := []ast{first}
+
+		for ok := true; ok; ok = p.acceptT(tCOMMA) {
+			items = append(items, p.expectF(assignmentExpression))
+		}
+
+		return makeNode(n_SEQUENCE_EXPRESSION, "", items...)
+	}
+
+	return first
+}
+
+func assignmentExpression(p *parser) ast {
+	prevIndex := p.i
+
+	if p.acceptF(objectPattern) ||
+		p.acceptF(arrayPattern) {
+		if p.acceptT(tASSIGN) {
+			return makeNode(
+				n_ASSIGNMENT_EXPRESSION, "=", p.getNode(),
+				p.expectF(assignmentExpression),
+			)
+		}
+		p.i = prevIndex
+	}
+
+	if !p.acceptF(conditionalExpression) {
+		return INVALID_NODE
+	}
+	left := p.getNode()
+
+	if p.acceptT(
+		tASSIGN, tPLUS_ASSIGN, tMINUS_ASSIGN, tMULT_ASSIGN, tDIV_ASSIGN,
+		tBITWISE_SHIFT_LEFT_ASSIGN, tBITWISE_SHIFT_RIGHT_ASSIGN,
+		tBITWISE_SHIFT_RIGHT_ZERO_ASSIGN, tBITWISE_AND_ASSIGN,
+		tBITWISE_OR_ASSIGN, tBITWISE_XOR_ASSIGN,
+	) {
+		kind := p.getLexeme()
+		right := p.expectF(assignmentExpression)
+		return makeNode(n_ASSIGNMENT_EXPRESSION, kind, left, right)
+	}
+
+	return left
+}
+
+func conditionalExpression(p *parser) ast {
+	if !p.acceptF(binaryExpression) {
+		return INVALID_NODE
+	}
+	cond := p.getNode()
+
+	if p.acceptT(tQUESTION) {
+		conseq := p.expectF(conditionalExpression)
+		p.expectT(tCOLON)
+		altern := p.expectF(conditionalExpression)
+
+		return makeNode(
+			n_CONDITIONAL_EXPRESSION, "", cond, conseq, altern,
+		)
+	}
+
+	return cond
+}
+
+func binaryExpression(p *parser) ast {
+	opStack := make([]token, 0)
+	outputStack := make([]ast, 0)
+	var root *ast
+
+	addNode := func(t token) {
+		right := outputStack[len(outputStack)-1]
+		left := outputStack[len(outputStack)-2]
+		nn := makeNode(n_BINARY_EXPRESSION, t.lexeme, left, right)
+
+		outputStack = outputStack[:len(outputStack)-2]
+		outputStack = append(outputStack, nn)
+		root = &nn
+	}
+
+	for {
+		if !p.acceptF(prefixUnaryExpression) {
+			return INVALID_NODE
+		}
+		expr := p.getNode()
+
+		outputStack = append(
+			outputStack, expr,
+		)
+
+		op, ok := operatorTable[p.getNext().tType]
+		if !ok {
+			break
+		}
+
+		for {
+			if len(opStack) > 0 {
+				opToken := opStack[len(opStack)-1]
+
+				opFromStack := operatorTable[opToken.tType]
+				if opFromStack.precedence > op.precedence ||
+					(opFromStack.precedence == op.precedence && !op.isRightAssociative) {
+					addNode(opToken)
+					opStack = opStack[:len(opStack)-1]
+				} else {
+					break
+				}
+			} else {
+				break
+			}
+		}
+		opStack = append(opStack, p.getNext())
+		p.tNext()
+	}
+
+	for i := len(opStack) - 1; i >= 0; i-- {
+		addNode(opStack[i])
+	}
+
+	if root != nil {
+		return *root
+	}
+	return outputStack[len(outputStack)-1]
+}
+
+func prefixUnaryExpression(p *parser) ast {
+	if p.acceptT(
+		tNOT, tBITWISE_NOT, tPLUS, tMINUS,
+		tINC, tDEC, tTYPEOF, tVOID, tDELETE,
+	) {
+		op := p.getLexeme()
+		if !p.acceptF(prefixUnaryExpression) {
+			return INVALID_NODE
+		}
+		value := p.getNode()
+		return makeNode(
+			n_PREFIX_UNARY_EXPRESSION, op, value,
+		)
+	}
+
+	if !p.acceptF(postfixUnaryExpression) {
+		return INVALID_NODE
+	}
+	return p.getNode()
+}
+
+func postfixUnaryExpression(p *parser) ast {
+	if !p.acceptF(functionCallOrMemberExpression) {
+		return INVALID_NODE
+	}
+	value := p.getNode()
+
+	if p.acceptT(tINC, tDEC) {
+		return makeNode(n_POSTFIX_UNARY_EXPRESSION, p.getLexeme(), value)
+	}
+
+	return value
+}
+
+func functionCallOrMemberExpression(p *parser) ast {
+	if !p.acceptF(constructorCall) {
+		return INVALID_NODE
+	}
+	funcName := p.getNode()
+
+	for {
+		if !p.testFlag(f_ACCEPT_NO_FUNCTION_CALL) && p.acceptF(functionArgs) {
+			call := makeNode(n_FUNCTION_CALL, "", funcName, p.getNode())
+			funcName = call
+		} else {
+			var property ast
+
+			if p.acceptT(tDOT) {
+				if p.acceptF(identifier) {
+					property = p.getNode()
+				}
+			} else if p.acceptT(tBRACKET_LEFT) {
+				property = makeNode(
+					n_CALCULATED_PROPERTY_NAME, "", p.expectF(sequenceExpression),
+				)
+				p.expectT(tBRACKET_RIGHT)
+			}
+
+			if property.t == n_EMPTY {
+				return funcName
+			}
+
+			funcName = makeNode(n_MEMBER_EXPRESSION, "", funcName, property)
+		}
+	}
+}
+
+func functionArgs(p *parser) ast {
+	if !p.acceptT(tPAREN_LEFT) {
+		return INVALID_NODE
+	}
+
+	args := []ast{}
+
+	for !p.acceptT(tPAREN_RIGHT) {
+		if p.acceptF(assignmentExpression) {
+			args = append(args, p.getNode())
+		}
+
+		if !p.acceptT(tCOMMA) {
+			p.expectT(tPAREN_RIGHT)
+			break
+		}
+	}
+
+	return makeNode(n_FUNCTION_ARGS, "", args...)
+}
+
+func constructorCall(p *parser) ast {
+	if p.acceptT(tNEW) {
+		var name, args ast
+
+		p.flags = f_ACCEPT_NO_FUNCTION_CALL
+		name = p.expectF(functionCallOrMemberExpression)
+		p.flags = 0
+
+		if p.acceptF(functionArgs) {
+			args = p.getNode()
+		}
+
+		return makeNode(n_CONSTRUCTOR_CALL, "", name, args)
+	}
+
+	if !p.acceptF(atom) {
+		return INVALID_NODE
+	}
+	return p.getNode()
+}
+
+func atom(p *parser) ast {
+	if p.acceptF(classExpression) ||
+		p.acceptF(objectLiteral) ||
+		p.acceptF(otherLiteral) ||
+		p.acceptF(lambdaExpression) ||
+		p.acceptF(parenExpression) ||
+		p.acceptF(regexpLiteral) ||
+		p.acceptF(arrayLiteral) ||
+		p.acceptF(identifier) ||
+		p.acceptF(functionExpression) {
+		return p.getNode()
+	}
+
+	return INVALID_NODE
+}
+
+func parenExpression(p *parser) ast {
+	if !p.acceptT(tPAREN_LEFT) {
+		return INVALID_NODE
+	}
+	if p.acceptF(sequenceExpression) {
+		p.expectT(tPAREN_RIGHT)
+		return makeNode(n_PAREN_EXPRESSION, "", p.getNode())
+	}
+	return INVALID_NODE
+}
+
+func lambdaExpression(p *parser) ast {
+	var args, body ast
+
+	if p.acceptF(identifier) {
+		args = makeNode(n_FUNCTION_PARAMETERS, "", p.getNode())
+	} else if p.acceptF(functionParameters) {
+		args = p.getNode()
+	}
+
+	if !p.acceptT(tLAMBDA) {
+		return INVALID_NODE
+	}
+
+	if p.acceptF(blockStatement) {
+		body = p.getNode()
+	} else {
+		body = p.expectF(assignmentExpression)
+	}
+	return makeNode(n_LAMBDA_EXPRESSION, "", args, body)
+}
+
+func regexpLiteral(p *parser) ast {
+	if !p.acceptT(tDIV) {
+		return INVALID_NODE
+	}
+
+	var body, flags ast
+
+	bodyValue := ""
+	for {
+		if p.acceptT(tDIV) && p.tokens[p.i-2].tType != tESCAPE {
+			break
+		}
+		p.tNext()
+		bodyValue += p.getLexeme()
+	}
+
+	body = makeNode(n_REGEXP_BODY, bodyValue)
+	if p.acceptT(tNAME) {
+		flags = makeNode(n_REGEXP_FLAGS, p.getLexeme())
+	}
+
+	return makeNode(n_REGEXP_LITERAL, "", body, flags)
+}
+
+func arrayLiteral(p *parser) ast {
+	if !p.acceptT(tBRACKET_LEFT) {
+		return INVALID_NODE
+	}
+
+	items := []ast{}
+	for !p.acceptT(tBRACKET_RIGHT) {
+		if p.acceptT(tSPREAD) {
+			items = append(
+				items, makeNode(
+					n_SPREAD_ELEMENT, "", p.expectF(assignmentExpression),
+				),
+			)
+		} else if p.acceptF(assignmentExpression) {
+			items = append(items, p.getNode())
+		} else {
+			items = append(items, makeNode(n_EMPTY_EXPRESSION, ""))
+		}
+
+		if !p.acceptT(tCOMMA) {
+			p.expectT(tBRACKET_RIGHT)
+			break
+		}
+	}
+
+	return makeNode(n_ARRAY_LITERAL, "", items...)
+}
+
+func objectProperty(p *parser) ast {
+	var kind string
+	var key, value ast
+
+	if p.acceptT(tSPREAD) {
+		return makeNode(
+			n_SPREAD_ELEMENT, "", p.expectF(assignmentExpression),
+		)
+	}
+
+	key = p.expectF(propertyKey)
+	if key.value == "set" || key.value == "get" {
+		kind = key.value
+		key = p.expectF(propertyKey)
+	}
+
+	if p.getNext().tType == tPAREN_LEFT {
+		params := p.expectF(functionParameters)
+		body := p.expectF(blockStatement)
+		return makeNode(n_OBJECT_METHOD, kind, key, params, body)
+	}
+
+	if p.acceptT(tCOLON) {
+		value = p.expectF(assignmentExpression)
+	}
+
+	return makeNode(n_OBJECT_PROPERTY, kind, key, value)
+}
+
+func objectLiteral(p *parser) ast {
+	if !p.acceptT(tCURLY_LEFT) {
+		return INVALID_NODE
+	}
+
+	props := []ast{}
+	for !p.acceptT(tCURLY_RIGHT) {
+		props = append(props, p.expectF(objectProperty))
+
+		if !p.acceptT(tCOMMA) {
+			p.expectT(tCURLY_RIGHT)
+			break
+		}
+	}
+
+	return makeNode(n_OBJECT_LITERAL, "", props...)
+}
+
+func otherLiteral(p *parser) ast {
+	if p.acceptT(tSTRING) {
+		return makeNode(n_STRING_LITERAL, p.getLexeme())
+	} else if p.acceptT(tNUMBER, tHEX) {
+		return makeNode(n_NUMBER_LITERAL, p.getLexeme())
+	} else if p.acceptT(tTRUE, tFALSE) {
+		return makeNode(n_BOOL_LITERAL, p.getLexeme())
+	} else if p.acceptT(tNULL) {
+		return makeNode(n_NULL, p.getLexeme())
+	} else if p.acceptT(tUNDEFINED) {
+		return makeNode(n_UNDEFINED, p.getLexeme())
+	}
+	return INVALID_NODE
+}
+
+func identifier(p *parser) ast {
+	if p.acceptT(tNAME, tTHIS) {
+		return makeNode(n_IDENTIFIER, p.getLexeme())
+	}
+	return INVALID_NODE
+}
+
+func arrayPattern(p *parser) ast {
+	if !p.acceptT(tBRACKET_LEFT) {
+		return INVALID_NODE
+	}
+
+	items := []ast{}
+	for !p.acceptT(tBRACKET_RIGHT) {
+		if p.acceptT(tSPREAD) {
+			items = append(items, makeNode(
+				n_SPREAD_ELEMENT, "", p.expectF(identifier),
+			))
+			continue
+		}
+
+		if p.acceptF(assignmentPattern) {
+			items = append(items, p.getNode())
+		} else if p.getNext().tType == tCOMMA {
+			items = append(items, makeNode(n_EMPTY, ""))
+		} else {
+			return INVALID_NODE
+		}
+
+		if !p.acceptT(tCOMMA) {
+			if !p.acceptT(tBRACKET_RIGHT) {
+				return INVALID_NODE
+			}
+			break
+		}
+	}
+
+	return makeNode(n_ARRAY_PATTERN, "", items...)
+}
+
+func objectPattern(p *parser) ast {
+	if !p.acceptT(tCURLY_LEFT) {
+		return INVALID_NODE
+	}
+
+	props := []ast{}
+	for !p.acceptT(tCURLY_RIGHT) {
+		if p.acceptT(tSPREAD) {
+			props = append(props, makeNode(
+				n_SPREAD_ELEMENT, "", p.expectF(identifier),
+			))
+			continue
+		}
+
+		if p.acceptF(propertyKey) {
+			var key, value ast
+
+			key = p.getNode()
+			if p.acceptT(tCOLON) {
+				if p.acceptF(assignmentPattern) {
+					value = p.getNode()
+				} else {
+					return INVALID_NODE
+				}
+			}
+
+			props = append(props, makeNode(n_OBJECT_PROPERTY, "", key, value))
+		}
+
+		if !p.acceptT(tCOMMA) {
+			if !p.acceptT(tCURLY_RIGHT) {
+				return INVALID_NODE
+			}
+			break
+		}
+	}
+
+	return makeNode(n_OBJECT_PATTERN, "", props...)
+}
+
+func propertyKey(p *parser) ast {
+	if p.acceptT(tBRACKET_LEFT) {
+		res := p.expectF(sequenceExpression)
+		p.expectT(tBRACKET_RIGHT)
+		return makeNode(n_CALCULATED_OBJECT_KEY, "", res)
+	}
+
+	if p.acceptF(identifier) {
+		return makeNode(n_OBJECT_KEY, p.getLexeme())
+	}
+
+	if p.acceptF(otherLiteral) {
+		return makeNode(n_NON_IDENTIFIER_OBJECT_KEY, p.getLexeme())
+	}
+
+	return INVALID_NODE
+}
+
+func assignmentPattern(p *parser) ast {
+	var left, right ast
+
+	if p.acceptF(objectPattern) ||
+		p.acceptF(identifier) ||
+		p.acceptF(arrayPattern) {
+		left = p.getNode()
+	} else {
+		return INVALID_NODE
+	}
+
+	if p.acceptT(tASSIGN) {
+		right = p.expectF(conditionalExpression)
+		return makeNode(n_ASSIGNMENT_PATTERN, "", left, right)
+	}
+
+	return left
+}
+
+func functionParameter(p *parser) ast {
+	if p.acceptT(tSPREAD) {
+		if p.acceptF(objectPattern) ||
+			p.acceptF(arrayPattern) ||
+			p.acceptF(identifier) {
+			return makeNode(n_REST_ELEMENT, "", p.getNode())
+		}
+		return p.expectF(identifier)
+	}
+
+	if p.acceptF(assignmentPattern) {
+		return p.getNode()
+	}
+
+	return INVALID_NODE
+}
+
+func functionParameters(p *parser) ast {
+	if !p.acceptT(tPAREN_LEFT) {
+		return INVALID_NODE
+	}
+
+	paramsSlice := []ast{}
+	for !p.acceptT(tPAREN_RIGHT) {
+		if p.acceptF(functionParameter) {
+			paramsSlice = append(paramsSlice, p.getNode())
+		}
+
+		if !p.acceptT(tCOMMA) {
+			if !p.acceptT(tPAREN_RIGHT) {
+				return INVALID_NODE
+			}
+			break
+		}
+	}
+
+	return makeNode(n_FUNCTION_PARAMETERS, "", paramsSlice...)
+}
+
+func blockStatement(p *parser) ast {
+	if !p.acceptT(tCURLY_LEFT) {
+		return INVALID_NODE
+	}
+	statements := []ast{}
+	for !p.acceptT(tCURLY_RIGHT) {
+		statements = append(statements, p.expectF(statement))
+	}
+
+	return makeNode(n_BLOCK_STATEMENT, "", statements...)
+}
+
+func functionExpression(p *parser) ast {
+	if !p.acceptT(tFUNCTION) {
+		return INVALID_NODE
+	}
+
+	var name, params, body ast
+	if p.acceptF(identifier) {
+		name = p.getNode()
+	}
+
+	params = p.expectF(functionParameters)
+	body = p.expectF(blockStatement)
+
+	return makeNode(n_FUNCTION_EXPRESSION, "", name, params, body)
+}
+
+func functionDeclaration(p *parser) ast {
+	if !p.acceptT(tFUNCTION) {
+		return INVALID_NODE
+	}
+
+	var name, params, body ast
+
+	name = p.expectF(identifier)
+	params = p.expectF(functionParameters)
+	body = p.expectF(blockStatement)
+
+	return makeNode(n_FUNCTION_DECLARATION, "", name, params, body)
+}
+
+func whileStatement(p *parser) ast {
+	if !(p.acceptT(tWHILE) && p.acceptT(tPAREN_LEFT)) {
+		return INVALID_NODE
+	}
+	var cond, body ast
+	cond = p.expectF(sequenceExpression)
+	p.expectT(tPAREN_RIGHT)
+	body = p.expectF(statement)
+
+	return makeNode(n_WHILE_STATEMENT, "", cond, body)
+}
+
+func doWhileStatement(p *parser) ast {
+	if !p.acceptT(tDO) {
+		return INVALID_NODE
+	}
+	var cond, body ast
+	body = p.expectF(statement)
+
+	if !(p.acceptT(tWHILE) && p.acceptT(tPAREN_LEFT)) {
+		return INVALID_NODE
+	}
+	cond = p.expectF(sequenceExpression)
+	p.expectT(tPAREN_RIGHT)
+
+	return makeNode(n_DO_WHILE_STATEMENT, "", cond, body)
+}
+
+func forInOfStatement(p *parser) ast {
+	if !(p.acceptT(tFOR) && p.acceptT(tPAREN_LEFT)) {
+		return INVALID_NODE
+	}
+	var left, right, body ast
+
+	if p.acceptF(varDeclaration) ||
+		p.acceptF(assignmentPattern) {
+		left = p.getNode()
+	} else {
+		return INVALID_NODE
+	}
+
+	if !p.acceptT(tIN) && !p.acceptT(tOF) {
+		return INVALID_NODE
+	}
+	kind := p.getLexeme()
+
+	right = p.expectF(sequenceExpression)
+
+	if !p.acceptT(tPAREN_RIGHT) {
+		return INVALID_NODE
+	}
+
+	body = p.expectF(statement)
+
+	if kind == "in" {
+		return makeNode(n_FOR_IN_STATEMENT, "", left, right, body)
+	}
+	return makeNode(n_FOR_OF_STATEMENT, "", left, right, body)
+}
+
+func forStatement(p *parser) ast {
+	if !(p.acceptT(tFOR) && p.acceptT(tPAREN_LEFT)) {
+		return INVALID_NODE
+	}
+	var init, test, final, body ast
+
+	if p.acceptT(tSEMI) {
+		init = makeNode(n_EMPTY_EXPRESSION, "")
+	} else if p.acceptF(varDeclaration) ||
+		p.acceptF(sequenceExpression) {
+		init = p.getNode()
+
+		p.expectT(tSEMI)
+	} else {
+		p.expectT(tSEMI)
+	}
+
+	if p.acceptT(tSEMI) {
+		test = makeNode(n_EMPTY_EXPRESSION, "")
+	} else {
+		test = p.expectF(sequenceExpression)
+
+		p.expectT(tSEMI)
+	}
+
+	if p.acceptT(tPAREN_RIGHT) {
+		final = makeNode(n_EMPTY_EXPRESSION, "")
+	} else {
+		final = p.expectF(sequenceExpression)
+
+		p.expectT(tPAREN_RIGHT)
+	}
+
+	body = p.expectF(statement)
+	return makeNode(n_FOR_STATEMENT, "", init, test, final, body)
+}
+
+func ifStatement(p *parser) ast {
+	if !(p.acceptT(tIF) &&
+		p.acceptT(tPAREN_LEFT)) {
+		return INVALID_NODE
+	}
+	var cond, conseq, alt ast
+	cond = p.expectF(sequenceExpression)
+	if !(p.acceptT(tPAREN_RIGHT)) {
+		return INVALID_NODE
+	}
+	conseq = p.expectF(statement)
+
+	if p.acceptT(tELSE) {
+		alt = p.expectF(statement)
+	}
+
+	return makeNode(n_IF_STATEMENT, "", cond, conseq, alt)
+}
+
+func exportStatement(p *parser) ast {
+	if !p.acceptT(tEXPORT) {
+		return INVALID_NODE
+	}
+
+	var vars, declaration, path ast
+	vars.t = n_EXPORT_VARS
+	declaration.t = n_EXPORT_DECLARATION
+	path.t = n_EXPORT_PATH
+
+	if p.acceptT(tDEFAULT) {
+		var name, alias ast
+
+		alias = makeNode(n_EXPORT_ALIAS, "default")
+		if p.acceptF(functionExpression) {
+			fe := p.getNode()
+			feName := fe.children[0]
+
+			if feName.t != n_EMPTY {
+				declaration = fe
+				name = feName
+			} else {
+				name = fe
+			}
+		} else {
+			p.expectF(sequenceExpression)
+			name = p.getNode()
+		}
+
+		ev := makeNode(n_EXPORT_VAR, "", name, alias)
+		vars.children = append(vars.children, ev)
+		p.expectT(tSEMI)
+
+	} else if p.acceptT(tCURLY_LEFT) {
+		for !p.acceptT(tCURLY_RIGHT) {
+			if p.acceptF(identifier) {
+				name := p.getNode()
+				alias := name
+
+				if p.acceptT(tNAME) && p.getLexeme() == "as" {
+					p.tNext()
+					alias = makeNode(n_EXPORT_ALIAS, p.getLexeme())
+				}
+				ev := makeNode(n_EXPORT_VAR, "", name, alias)
+				vars.children = append(vars.children, ev)
+			}
+
+			if !p.acceptT(tCOMMA) {
+				p.expectT(tCURLY_RIGHT)
+				break
+			}
+		}
+
+		if p.acceptT(tNAME) && p.getLexeme() == "from" {
+			p.expectT(tSTRING)
+			path = makeNode(n_EXPORT_PATH, p.getLexeme())
+		}
+		p.expectT(tSEMI)
+
+	} else if p.acceptF(declarationStatement) {
+		declaration = p.getNode()
+		for _, d := range declaration.children[0].children {
+			name := d.children[0]
+			alias := d.children[0]
+			ev := makeNode(n_EXPORT_VAR, "", name, alias)
+
+			vars.children = append(vars.children, ev)
+		}
+
+	} else if p.acceptF(functionDeclaration) {
+		fs := p.getNode()
+		declaration = fs
+		name := fs.children[0]
+		alias := name
+		ev := makeNode(n_EXPORT_VAR, "", name, alias)
+		vars.children = append(vars.children, ev)
+
+	} else if p.acceptT(tMULT) {
+		p.expectT(tNAME)
+		if p.getLexeme() != "from" {
+			return INVALID_NODE
+		}
+		p.expectT(tSTRING)
+		path = makeNode(n_EXPORT_PATH, p.getLexeme())
+		vars.t = n_EXPORT_ALL
+		p.expectT(tSEMI)
+	}
+
+	result := makeNode(n_EXPORT_STATEMENT, "", vars, declaration, path)
+	return result
+}
+
+func classBody(p *parser) ast {
+	if !p.acceptT(tCURLY_LEFT) {
+		return INVALID_NODE
+	}
+
+	props := []ast{}
+	for !p.acceptT(tCURLY_RIGHT) {
+		var prop, key, value ast
+		kind := ""
+		isStatic := false
+
+		if p.acceptT(tSTATIC) {
+			isStatic = true
+		}
+
+		key = p.expectF(propertyKey)
+		if key.value == "set" || key.value == "get" {
+			kind = key.value
+			key = p.expectF(propertyKey)
+		}
+
+		if p.getNext().tType == tPAREN_LEFT {
+			params := p.expectF(functionParameters)
+			body := p.expectF(blockStatement)
+			prop = makeNode(n_CLASS_METHOD, kind, key, params, body)
+		} else {
+			if p.acceptT(tASSIGN, tCOLON) {
+				value = p.expectF(sequenceExpression)
+			}
+			prop = makeNode(n_CLASS_PROPERTY, "", key, value)
+		}
+
+		if isStatic {
+			props = append(props, makeNode(
+				n_CLASS_STATIC_PROPERTY, "", prop,
+			))
+		} else {
+			props = append(props, prop)
+		}
+
+		if prop.t != n_CLASS_METHOD {
+			p.expectT(tSEMI)
+		}
+	}
+
+	return makeNode(n_CLASS_BODY, "", props...)
+}
+
+func classExpression(p *parser) ast {
+	if !p.acceptT(tCLASS) {
+		return INVALID_NODE
+	}
+
+	var name, extends, body ast
+	if p.acceptF(identifier) {
+		name = p.getNode()
+	}
+	if p.acceptT(tEXTENDS) {
+		extends = p.expectF(functionCallOrMemberExpression)
+	}
+	body = p.expectF(classBody)
+
+	return makeNode(n_CLASS_EXPRESSION, "", name, extends, body)
+}
+
+func classStatement(p *parser) ast {
+	if !p.acceptT(tCLASS) {
+		return INVALID_NODE
+	}
+
+	var name, extends, body ast
+	name = p.expectF(identifier)
+	if p.acceptT(tEXTENDS) {
+		extends = p.expectF(functionCallOrMemberExpression)
+	}
+	body = p.expectF(classBody)
+
+	return makeNode(n_CLASS_STATEMENT, "", name, extends, body)
+}

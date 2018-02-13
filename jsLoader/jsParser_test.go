@@ -570,6 +570,10 @@ func TestExportStatement(t *testing.T) {
 			"export function foo() {};",
 			"function foo(){}export{foo as foo};;",
 		},
+		{
+			"export * from 'foo';",
+			"export* from'foo';",
+		},
 	}
 
 	for _, c := range cases {

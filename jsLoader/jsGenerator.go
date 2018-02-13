@@ -158,7 +158,7 @@ func printAst(n ast) string {
 	case n_REST_ELEMENT:
 		return "..." + printAst(n.children[0])
 
-	case n_ARRAY_LITERAL:
+	case n_ARRAY_LITERAL, n_ARRAY_PATTERN:
 		res := "["
 		for i, item := range n.children {
 			res += printAst(item)
@@ -336,6 +336,11 @@ func printAst(n ast) string {
 		result += printAst(declaration)
 
 		result += "export"
+
+		if n.children[0].t == n_EXPORT_ALL {
+			return "export*" + printAst(n.children[2]) + ";"
+		}
+
 		vars := n.children[0].children
 		if len(vars) == 1 {
 			v := vars[0]
