@@ -1,6 +1,8 @@
 package jsLoader
 
-import "testing"
+import (
+	"testing"
+)
 
 var ps parser
 

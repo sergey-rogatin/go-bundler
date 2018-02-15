@@ -218,7 +218,7 @@ func createBundle(entryFileName, bundleFileName string, cache *bundleCache) {
 		cache.Files[fileName] = file
 	}
 
-	sf.write([]byte("var moduleFns={},modules={};var process={env:{NODE_ENV:'development'}};"))
+	sf.write([]byte(getJsBundleFileStart()))
 	err := addFilesToBundle([]string{entryFileName}, sf, cache)
 	sf.write(getJsBundleFileTail(entryFileName, cache))
 
@@ -229,6 +229,32 @@ func createBundle(entryFileName, bundleFileName string, cache *bundleCache) {
 	}
 
 	cache.saveFile()
+}
+
+func getJsBundleFileStart() string {
+	start := `function requireES6(module, impName) {
+		if (module.hasES6Exports) {
+			if (impName === '*') {
+				return module.es6;
+			}
+			return module.es6[impName];
+		}
+		if (impName == '*' || impName === 'default') {
+			return module.exports;
+		}
+		return module.exports[impName];
+	}
+	
+	function require(module) {
+		if (module.hasES6Exports) {
+			return module.es6;
+		}
+		return module.exports;
+	}
+	var moduleFns={},modules={};
+	var process={env:{NODE_ENV:'development'}};
+	`
+	return start
 }
 
 func getJsBundleFileTail(entryFileName string, cache *bundleCache) []byte {

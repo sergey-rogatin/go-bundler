@@ -9,6 +9,7 @@ func printAst(n ast) string {
 		n_IMPORT_ALIAS,
 		n_IMPORT_NAME,
 		n_EXPORT_ALIAS,
+		n_BOOL_LITERAL,
 		n_EXPORT_NAME:
 		return n.value
 
@@ -423,6 +424,14 @@ func printAst(n ast) string {
 
 	case n_CLASS_STATIC_PROPERTY:
 		return "static " + printAst(n.children[0])
+
+	case n_MULTISTATEMENT:
+		res := ""
+		for _, st := range n.children {
+			res += printAst(st)
+		}
+		return res
+
 	}
 
 	return ""

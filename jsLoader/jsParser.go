@@ -10,6 +10,16 @@ type ast struct {
 	children []ast
 }
 
+/* TODO:
+tagged literals
+generator functions and yield
+try catch finally
+switch
+with
+labels
+async await
+*/
+
 const (
 	f_ACCEPT_NO_FUNCTION_CALL = 1 << 0
 	f_ACCEPT_NO_IN            = 1 << 1
@@ -139,6 +149,23 @@ func (p *parser) checkASI() {
 	}
 
 	panic(p.tokens[p.lastIndex])
+}
+
+// func parseTokens(tokens []token) (ast, error) {
+// 	return parseProgram(tokens)
+// }
+
+func parseTokens(tokens []token) (res ast, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			// err = r.(string)
+			return
+		}
+	}()
+
+	p := parser{tokens: tokens}
+	res = program(&p)
+	return
 }
 
 func program(p *parser) ast {
@@ -502,9 +529,7 @@ func functionCallOrMemberExpression(p *parser) ast {
 			var property ast
 
 			if p.acceptT(tDOT) {
-				if p.acceptF(identifier) {
-					property = p.getNode()
-				}
+				property = p.expectF(identifier)
 			} else if p.acceptT(tBRACKET_LEFT) {
 				property = makeNode(
 					n_CALCULATED_PROPERTY_NAME, "", p.expectF(sequenceExpression),
