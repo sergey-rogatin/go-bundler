@@ -11,14 +11,18 @@ type ast struct {
 }
 
 /* TODO:
+try catch finally
+switch
+labels
+with
+
 classes in exports
 tagged literals
 generator functions and yield
-try catch finally
-switch
-with
-labels
 async await
+
+
+test invalid syntax catching
 */
 
 const (
@@ -83,7 +87,7 @@ func (p *parser) expectT(tTypes ...tokenType) {
 			i++
 		}
 		p.lastIndex = i
-		p.checkASI()
+		p.checkASI(tTypes...)
 	}
 }
 
@@ -131,22 +135,27 @@ func (p *parser) getLexeme() string {
 
 func (p *parser) expectF(f parseFunc) ast {
 	if !p.acceptF(f) {
-		p.checkASI()
+		p.checkASI(tSEMI)
 	}
 	return p.getNode()
 }
 
-func (p *parser) checkASI() {
+func (p *parser) checkASI(tTypes ...tokenType) {
 	i := p.i
 	for p.tokens[i].tType == tSPACE {
 		i++
 	}
-	if p.tokens[i].tType == tNEWLINE ||
-		p.tokens[i].tType == tCURLY_RIGHT {
-		return
-	}
-	if p.tokens[i].tType == tEND_OF_INPUT {
-		return
+
+	for _, tType := range tTypes {
+		if tType == tSEMI {
+			if p.tokens[i].tType == tNEWLINE ||
+				p.tokens[i].tType == tCURLY_RIGHT {
+				return
+			}
+			if p.tokens[i].tType == tEND_OF_INPUT {
+				return
+			}
+		}
 	}
 
 	panic(&parsingError{p.tokens[p.lastIndex]})
@@ -261,9 +270,14 @@ func importStatement(p *parser) ast {
 					name := makeNode(n_IMPORT_NAME, p.getLexeme())
 					alias := makeNode(n_IMPORT_ALIAS, p.getLexeme())
 
-					if p.acceptT(tNAME) && p.getLexeme() == "as" {
-						p.tNext()
-						alias = makeNode(n_IMPORT_ALIAS, p.getLexeme())
+					if p.acceptT(tNAME) {
+						if p.getLexeme() == "as" {
+							p.tNext()
+							alias = makeNode(n_IMPORT_ALIAS, p.getLexeme())
+						} else {
+							p.i--
+							p.expectT(tCURLY_RIGHT)
+						}
 					}
 
 					varNode := makeNode(n_IMPORT_VAR, "", name, alias)

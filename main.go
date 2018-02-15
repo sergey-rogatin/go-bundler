@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -174,7 +175,7 @@ func main() {
 		cache.Files = map[string]fileCache{}
 	}
 
-	createBundle(config.Entry, bundleName, cache)
+	createBundle(config.Entry, bundleName, cache, &config)
 
 	if config.TemplateHTML != "" {
 		bundleHTMLTemplate(config.TemplateHTML, bundleName)
@@ -183,14 +184,14 @@ func main() {
 	// dev server and watching files
 	if config.DevServer.Enable {
 		if config.WatchFiles {
-			go watchBundledFiles(cache, config.Entry, bundleName)
+			go watchBundledFiles(cache, config.Entry, bundleName, &config)
 		}
 		fmt.Printf("Dev server listening at port %v\n", config.DevServer.Port)
 		server := http.FileServer(http.Dir(config.BundleDir))
 		err := http.ListenAndServe(fmt.Sprintf(":%v", config.DevServer.Port), server)
 		log.Fatal(err)
 	} else if config.WatchFiles {
-		watchBundledFiles(cache, config.Entry, bundleName)
+		watchBundledFiles(cache, config.Entry, bundleName, &config)
 	}
 }
 
@@ -203,9 +204,14 @@ func indexOf(arr []string, str string) int {
 	return -1
 }
 
-func createBundle(entryFileName, bundleFileName string, cache *bundleCache) {
-	buildStartTime := time.Now()
+func clearScreen() {
+	cmd := exec.Command("cmd", "/c", "cls")
+	cmd.Stdout = os.Stdout
+	cmd.Run()
+}
 
+func createBundle(entryFileName, bundleFileName string, cache *bundleCache, config *configJSON) {
+	startTime := time.Now()
 	os.MkdirAll(filepath.Dir(bundleFileName), 0666)
 	os.Remove(bundleFileName)
 	sf := newSafeFile(bundleFileName)
@@ -218,20 +224,37 @@ func createBundle(entryFileName, bundleFileName string, cache *bundleCache) {
 		cache.Files[fileName] = file
 	}
 
-	sf.write([]byte(getJsBundleFileStart()))
+	sf.write([]byte(getJsBundleFileHead()))
 	err := addFilesToBundle([]string{entryFileName}, sf, cache)
-	sf.write(getJsBundleFileTail(entryFileName, cache))
 
-	if err == nil {
-		fmt.Printf("\n>>Build finished in %s\n", time.Since(buildStartTime))
-	} else {
-		fmt.Printf("\n>>%s\n", err)
+	tail, warnings := getJsBundleFileTail(entryFileName, cache)
+	sf.write(tail)
+	buildTime := time.Since(startTime)
+
+	if config.WatchFiles {
+		clearScreen()
 	}
 
-	cache.saveFile()
+	if config.PermanentCache.Enable {
+		cacheSaveStart := time.Now()
+		cache.saveFile()
+		cacheSaveTime := time.Since(cacheSaveStart)
+		cprintf(c_GREEN, ">>Cache saved to %s in %s\n", config.PermanentCache.DirName, cacheSaveTime)
+	}
+
+	if err == nil {
+		if len(warnings) > 0 {
+			fmt.Println()
+			cprintf(c_YELLOW, "%s\n", strings.Join(warnings, "\n"))
+		}
+		cprintf(c_GREEN, ">>Build finished in %s\n", buildTime)
+	} else {
+		cprintf(c_RED, "\n>>%s\n", err)
+		return
+	}
 }
 
-func getJsBundleFileStart() string {
+func getJsBundleFileHead() string {
 	start := `function requireES6(module, impName) {
 		if (module.hasES6Exports) {
 			if (impName === '*') {
@@ -252,25 +275,21 @@ func getJsBundleFileStart() string {
 		return module.exports;
 	}
 	var moduleFns={},modules={};
-	var process={env:{NODE_ENV:'development'}};
-	`
+	var process={env:{NODE_ENV:'development'}};`
 	return start
 }
 
-func getJsBundleFileTail(entryFileName string, cache *bundleCache) []byte {
+func getJsBundleFileTail(entryFileName string, cache *bundleCache) ([]byte, []string) {
 	moduleOrder := []string{}
+	warnings := []string{}
 
 	var createImportTree func(string, []string)
 	createImportTree = func(fileName string, path []string) {
-		// if filepath.Ext(fileName) != ".js" {
-		// 	return
-		// }
-
 		if i := indexOf(path, fileName); i >= 0 {
-			fmt.Printf(
-				"\n>>Warning: circular dependency detected:\n%s\n",
+			warnings = append(warnings, fmt.Sprintf(
+				">>Warning: circular dependency detected:\n%s\n",
 				strings.Join(append(path[i:], fileName), " -> "),
-			)
+			))
 			return
 		}
 
@@ -289,7 +308,7 @@ func getJsBundleFileTail(entryFileName string, cache *bundleCache) []byte {
 	jsModuleOrder := fmt.Sprintf("var moduleOrder = [%s];", strings.Join(moduleOrder, ","))
 	result := []byte(jsModuleOrder + "moduleOrder.forEach((moduleName)=>modules[moduleName]=moduleFns[moduleName]())")
 
-	return result
+	return result, warnings
 }
 
 func addFilesToBundle(
@@ -319,7 +338,7 @@ type fileError struct {
 }
 
 func (fe fileError) Error() string {
-	return "Error: " + fe.err + " " + fe.path
+	return ">>Error: " + fe.err + " '" + fe.path + "'"
 }
 
 func addFileToBundle(
@@ -333,7 +352,7 @@ func addFileToBundle(
 
 	fileStats, err := os.Stat(fileName)
 	if err != nil {
-		errorCh <- fileError{">>Error: cannot find file", fileName}
+		errorCh <- fileError{"cannot find file", fileName}
 		return
 	}
 	lastModTime := fileStats.ModTime()
@@ -419,6 +438,7 @@ func watchBundledFiles(
 	cache *bundleCache,
 	entryName,
 	bundleName string,
+	config *configJSON,
 ) func() {
 	fmt.Println("Watching for file changes")
 
@@ -436,7 +456,7 @@ func watchBundledFiles(
 					continue
 				}
 				if file.LastModTime != stats.ModTime() {
-					createBundle(entryName, bundleName, cache)
+					createBundle(entryName, bundleName, cache, config)
 					break
 				}
 			}
