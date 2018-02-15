@@ -11,6 +11,7 @@ type ast struct {
 }
 
 /* TODO:
+classes in exports
 tagged literals
 generator functions and yield
 try catch finally
@@ -148,17 +149,21 @@ func (p *parser) checkASI() {
 		return
 	}
 
-	panic(p.tokens[p.lastIndex])
+	panic(&parsingError{p.tokens[p.lastIndex]})
 }
 
-// func parseTokens(tokens []token) (ast, error) {
-// 	return parseProgram(tokens)
-// }
+type parsingError struct {
+	t token
+}
 
-func parseTokens(tokens []token) (res ast, err error) {
+func (pe *parsingError) Error() string {
+	return fmt.Sprintf("Unexpected token %v at %v:%v", pe.t.lexeme, pe.t.line, pe.t.column)
+}
+
+func parseTokens(tokens []token) (res ast, err *parsingError) {
 	defer func() {
 		if r := recover(); r != nil {
-			// err = r.(string)
+			err = r.(*parsingError)
 			return
 		}
 	}()

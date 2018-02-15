@@ -5,10 +5,11 @@ import (
 )
 
 type token struct {
-	tType  tokenType
-	lexeme string
-	line   int
-	column int
+	tType     tokenType
+	lexeme    string
+	line      int
+	column    int
+	charIndex int
 }
 
 func (t token) String() string {
@@ -81,6 +82,7 @@ func lex(src []byte) []token {
 		}
 		lastToken.lexeme = ""
 		lastToken.tType = tUNDEFINED
+		lastToken.charIndex = i
 	}
 
 	substr := func(start, end int) string {

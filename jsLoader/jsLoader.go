@@ -6,12 +6,36 @@ import (
 )
 
 type LoaderError struct {
-	err      error
+	err      string
 	fileName string
 }
 
 func (le LoaderError) Error() string {
-	return fmt.Sprintf("Error loading file %s:\n %s", le.fileName, le.err)
+	return fmt.Sprintf("Error loading file %s:\n%s", le.fileName, le.err)
+}
+
+func getNiceError(pe *parsingError, src []byte) string {
+	start := pe.t.charIndex
+	for src[start] != '\n' {
+		start--
+	}
+	start++
+
+	end := pe.t.charIndex
+	for src[end] != '\n' {
+		end++
+	}
+
+	resLine0 := fmt.Sprintf("Unexpected token '%s' at %v:%v\n", pe.t.lexeme, pe.t.line, pe.t.column)
+	resStart := fmt.Sprintf("%04d", pe.t.line) + " "
+	resLine1 := resStart + string(src[start:end]) + "\n"
+	resLine2 := ""
+	for i := 0; i <= pe.t.column+len(resStart); i++ {
+		resLine1 += " "
+	}
+	resLine2 += "^"
+
+	return resLine0 + resLine1 + resLine2
 }
 
 func LoadFile(src []byte, filePath string) ([]byte, []string, error) {
@@ -19,7 +43,8 @@ func LoadFile(src []byte, filePath string) ([]byte, []string, error) {
 	initialProgram, parseErr := parseTokens(tokens)
 	if parseErr != nil {
 		loaderErr := LoaderError{}
-		loaderErr.err = parseErr
+
+		loaderErr.err = getNiceError(parseErr, src)
 		loaderErr.fileName = filePath
 
 		return nil, nil, loaderErr

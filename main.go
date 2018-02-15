@@ -4,7 +4,6 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lvl5hm/go-bundler/jsLoader"
+	"github.com/lvl5hm/go-bundler/urlLoader"
 )
 
 type safeFile struct {
@@ -262,9 +262,9 @@ func getJsBundleFileTail(entryFileName string, cache *bundleCache) []byte {
 
 	var createImportTree func(string, []string)
 	createImportTree = func(fileName string, path []string) {
-		if filepath.Ext(fileName) != ".js" {
-			return
-		}
+		// if filepath.Ext(fileName) != ".js" {
+		// 	return
+		// }
 
 		if i := indexOf(path, fileName); i >= 0 {
 			fmt.Printf(
@@ -300,7 +300,7 @@ func addFilesToBundle(
 	errorCh := make(chan error, len(files))
 
 	for _, unbundledFile := range files {
-		addFileToBundle(unbundledFile, bundleSf, errorCh, cache)
+		go addFileToBundle(unbundledFile, bundleSf, errorCh, cache)
 	}
 
 	for counter := 0; counter < len(files); counter++ {
@@ -323,7 +323,7 @@ func (fe fileError) Error() string {
 }
 
 func addFileToBundle(
-	resolvedPath string,
+	fileName string,
 	bundleSf *safeFile,
 	errorCh chan error,
 	cache *bundleCache,
@@ -331,15 +331,15 @@ func addFileToBundle(
 	var data []byte
 	var fileImports []string
 
-	fileStats, err := os.Stat(resolvedPath)
+	fileStats, err := os.Stat(fileName)
 	if err != nil {
-		errorCh <- fileError{">>Error: cannot find file", resolvedPath}
+		errorCh <- fileError{">>Error: cannot find file", fileName}
 		return
 	}
 	lastModTime := fileStats.ModTime()
 
 	saveCache := func() {
-		cache.write(resolvedPath, fileCache{
+		cache.write(fileName, fileCache{
 			Data:        data,
 			Imports:     fileImports,
 			LastModTime: lastModTime,
@@ -348,34 +348,33 @@ func addFileToBundle(
 	}
 
 	cache.Lock.Lock()
-	cachedFile, ok := cache.Files[resolvedPath]
+	cachedFile, ok := cache.Files[fileName]
 	if ok && cachedFile.IsReachable {
 		cache.Lock.Unlock()
 		errorCh <- nil
 		return
 	}
-	cache.Files[resolvedPath] = fileCache{
+	cache.Files[fileName] = fileCache{
 		IsReachable: true,
 	}
 	cache.Lock.Unlock()
 
-	if ok && cachedFile.LastModTime == fileStats.ModTime() {
+	if ok && cachedFile.LastModTime == fileStats.ModTime() && cachedFile.Data != nil {
 		data = cachedFile.Data
 		fileImports = cachedFile.Imports
 	} else {
-		ext := filepath.Ext(resolvedPath)
+		ext := filepath.Ext(fileName)
 
-		//fmt.Printf("Loading %s\n", resolvedPath)
 		switch ext {
 		case ".js":
-			src, err := ioutil.ReadFile(resolvedPath)
+			src, err := ioutil.ReadFile(fileName)
 			if err != nil {
 				saveCache()
 				errorCh <- err
 				return
 			}
 
-			data, fileImports, err = jsLoader.LoadFile(src, resolvedPath)
+			data, fileImports, err = jsLoader.LoadFile(src, fileName)
 			if err != nil {
 				saveCache()
 				errorCh <- err
@@ -384,8 +383,7 @@ func addFileToBundle(
 
 		default:
 			bundleDir := filepath.Dir(bundleSf.file.Name())
-			dstFileName := bundleDir + "/" + jsLoader.CreateVarNameFromPath(resolvedPath) + ext
-			copyFile(dstFileName, resolvedPath)
+			data, fileImports, err = urlLoader.LoadFile(fileName, bundleDir)
 		}
 	}
 
@@ -415,21 +413,6 @@ func bundleHTMLTemplate(templateName, bundleName string) {
 
 	bundleDir := filepath.Dir(bundleName)
 	ioutil.WriteFile(filepath.Join(bundleDir, "index.html"), []byte(result), 0666)
-}
-
-func copyFile(dst, src string) {
-	from, err := os.Open(src)
-	if err != nil {
-		fmt.Println(err)
-	}
-	defer from.Close()
-
-	to, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE, 0666)
-	if err != nil {
-		fmt.Println(err)
-	}
-	defer to.Close()
-	io.Copy(to, from)
 }
 
 func watchBundledFiles(
