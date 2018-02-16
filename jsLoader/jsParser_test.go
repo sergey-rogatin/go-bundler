@@ -21,6 +21,14 @@ func TestExpressions(t *testing.T) {
 		exp string
 	}{
 		{
+			"of=foo;",
+			"of=foo;",
+		},
+		{
+			"a=0e321;",
+			"a=0e321;",
+		},
+		{
 			"a + foo * 32;",
 			"a+foo*32;",
 		},
@@ -39,6 +47,14 @@ func TestExpressions(t *testing.T) {
 		{
 			"!!(a+b);",
 			"!!(a+b);",
+		},
+		{
+			"foo && bar;",
+			"foo&&bar;",
+		},
+		{
+			"typeof foo;delete foo.bar;void foo;",
+			"typeof foo;delete foo.bar;void foo;",
 		},
 	}
 
@@ -64,8 +80,8 @@ func TestObjectLiteral(t *testing.T) {
 			"a={a,...foo,...{bar}=3};",
 		},
 		{
-			"a = {};",
-			"a={};",
+			"a = {default: foo};",
+			"a={default:foo};",
 		},
 		{
 			"a = {a:b,c,};",
@@ -94,6 +110,10 @@ func TestObjectLiteral(t *testing.T) {
 		{
 			"a = {get foo(){}, set bar(){}};",
 			"a={get foo(){},set bar(){}};",
+		},
+		{
+			"a = {get: function(){}, set(){}};",
+			"a={get:function(){},set(){}};",
 		},
 	}
 
@@ -468,12 +488,12 @@ func TestExpressionStatement(t *testing.T) {
 			"var foo=3,bar;",
 		},
 		{
-			"break;",
-			"break;",
+			"break foo;",
+			"break foo;",
 		},
 		{
-			"continue;",
-			"continue;",
+			"continue foo;",
+			"continue foo;",
 		},
 		{
 			"debugger;",
@@ -989,18 +1009,22 @@ func TestComments(t *testing.T) {
 		exp string
 	}{
 		{
+			"console.log(ReactDOM",
+			"",
+		},
+		{
 			"//foo",
 			"",
 		},
 		{
 			`/** @license React v16.2.0
-			* react.development.js
-			*
-			* Copyright (c) 2013-present, Facebook, Inc.
-			*
-			* This source code is licensed under the MIT license found in the
-			* LICENSE file in the root directory of this source tree.
-			*/`,
+		* react.development.js
+		*
+		* Copyright (c) 2013-present, Facebook, Inc.
+		*
+		* This source code is licensed under the MIT license found in the
+		* LICENSE file in the root directory of this source tree.
+		*/`,
 			"",
 		},
 	}
@@ -1011,8 +1035,6 @@ func TestComments(t *testing.T) {
 
 		res := printAst(le)
 		if res != c.exp {
-			fmt.Println([]byte(res))
-			fmt.Println([]byte(c.exp))
 			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
 		}

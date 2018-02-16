@@ -15,8 +15,12 @@ func (le LoaderError) Error() string {
 }
 
 func getNiceError(pe *parsingError, src []byte) string {
+	if pe.t.charIndex > len(src)-1 {
+		pe.t.charIndex = len(src) - 1
+	}
+
 	start := pe.t.charIndex
-	for start >= 0 && src[start] != '\n' {
+	for start > 0 && src[start] != '\n' {
 		start--
 	}
 	start++

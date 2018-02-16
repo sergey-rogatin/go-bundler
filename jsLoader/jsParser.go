@@ -18,6 +18,10 @@ async await
 
 check what keywords are allowed to be variable names and object property names
 
+static analysis:
+	NODE_ENV === 'production'
+	tree-shaking
+
 
 test invalid syntax catching
 */
@@ -67,7 +71,7 @@ func (p *parser) getNext() token {
 	return p.tokens[i]
 }
 
-func (p *parser) tNext() {
+func (p *parser) skipT() {
 	for p.tokens[p.i].tType == tSPACE ||
 		p.tokens[p.i].tType == tNEWLINE {
 		p.i++
@@ -99,7 +103,7 @@ func (p *parser) acceptT(tTypes ...tokenType) bool {
 
 	for _, tType := range tTypes {
 		if tok.tType == tType {
-			p.tNext()
+			p.skipT()
 			return true
 		}
 	}
@@ -132,6 +136,7 @@ func (p *parser) getLexeme() string {
 
 func (p *parser) expectF(f parseFunc) ast {
 	if !p.acceptF(f) {
+		p.lastIndex = p.i
 		p.checkASI(tSEMI)
 	}
 	return p.getNode()
@@ -313,7 +318,7 @@ func importStatement(p *parser) ast {
 	path.t = n_IMPORT_PATH
 
 	if p.acceptT(tMULT) {
-		p.tNext()
+		p.skipT()
 		if p.getLexeme() != "as" {
 			return INVALID_NODE
 		}
@@ -321,7 +326,7 @@ func importStatement(p *parser) ast {
 		p.expectF(identifier)
 		all.value = p.getLexeme()
 
-		p.tNext()
+		p.skipT()
 		if p.getLexeme() != "from" {
 			return INVALID_NODE
 		}
@@ -335,7 +340,7 @@ func importStatement(p *parser) ast {
 
 			if p.acceptT(tCOMMA) {
 				if p.acceptT(tMULT) {
-					p.tNext()
+					p.skipT()
 					if p.getLexeme() != "as" {
 						return INVALID_NODE
 					}
@@ -343,13 +348,13 @@ func importStatement(p *parser) ast {
 					p.expectF(identifier)
 					all.value = p.getLexeme()
 
-					p.tNext()
+					p.skipT()
 					if p.getLexeme() != "from" {
 						return INVALID_NODE
 					}
 				}
 			} else {
-				p.tNext()
+				p.skipT()
 				if p.getLexeme() != "from" {
 					return INVALID_NODE
 				}
@@ -364,7 +369,7 @@ func importStatement(p *parser) ast {
 
 					if p.acceptT(tNAME) {
 						if p.getLexeme() == "as" {
-							p.tNext()
+							p.skipT()
 							alias = makeNode(n_IMPORT_ALIAS, p.getLexeme())
 						} else {
 							p.i--
@@ -382,7 +387,7 @@ func importStatement(p *parser) ast {
 				}
 			}
 
-			p.tNext()
+			p.skipT()
 			if p.getLexeme() != "from" {
 				return INVALID_NODE
 			}
@@ -412,7 +417,17 @@ func expressionStatement(p *parser) ast {
 		return makeNode(n_RETURN_STATEMENT, "")
 	}
 
-	if p.acceptT(tBREAK, tCONTINUE, tDEBUGGER) {
+	if p.acceptT(tBREAK, tCONTINUE) {
+		var label ast
+		word := p.getLexeme()
+		if p.acceptF(identifier) {
+			label = p.getNode()
+		}
+		res := makeNode(n_CONTROL_STATEMENT, word, label)
+		p.expectT(tSEMI)
+		return res
+	}
+	if p.acceptT(tDEBUGGER) {
 		res := makeNode(
 			n_EXPRESSION_STATEMENT, "",
 			makeNode(n_CONTROL_WORD, p.getLexeme()),
@@ -575,7 +590,7 @@ func binaryExpression(p *parser) ast {
 			}
 		}
 		opStack = append(opStack, p.getNext())
-		p.tNext()
+		p.skipT()
 	}
 
 	for i := len(opStack) - 1; i >= 0; i-- {
@@ -721,11 +736,9 @@ func parenExpression(p *parser) ast {
 	if !p.acceptT(tPAREN_LEFT) {
 		return INVALID_NODE
 	}
-	if p.acceptF(sequenceExpression) {
-		p.expectT(tPAREN_RIGHT)
-		return makeNode(n_PAREN_EXPRESSION, "", p.getNode())
-	}
-	return INVALID_NODE
+	expr := p.expectF(sequenceExpression)
+	p.expectT(tPAREN_RIGHT)
+	return makeNode(n_PAREN_EXPRESSION, "", expr)
 }
 
 func lambdaExpression(p *parser) ast {
@@ -758,10 +771,11 @@ func regexpLiteral(p *parser) ast {
 
 	bodyValue := ""
 	for {
-		if p.acceptT(tDIV) && p.tokens[p.i-2].tType != tESCAPE {
+		if p.getNext().tType == tDIV && p.tokens[p.i-1].tType != tESCAPE {
+			p.skipT()
 			break
 		}
-		p.tNext()
+		p.skipT()
 		bodyValue += p.getLexeme()
 	}
 
@@ -813,8 +827,10 @@ func objectProperty(p *parser) ast {
 
 	key = p.expectF(propertyKey)
 	if key.value == "set" || key.value == "get" {
-		kind = key.value
-		key = p.expectF(propertyKey)
+		if p.getNext().tType != tCOLON && p.getNext().tType != tPAREN_LEFT {
+			kind = key.value
+			key = p.expectF(propertyKey)
+		}
 	}
 
 	if p.getNext().tType == tPAREN_LEFT {
@@ -866,7 +882,7 @@ func otherLiteral(p *parser) ast {
 }
 
 func identifier(p *parser) ast {
-	if p.acceptT(tNAME, tTHIS) {
+	if p.acceptT(tNAME, tTHIS, tOF) {
 		return makeNode(n_IDENTIFIER, p.getLexeme())
 	}
 	return INVALID_NODE
@@ -945,6 +961,21 @@ func objectPattern(p *parser) ast {
 	return makeNode(n_OBJECT_PATTERN, "", props...)
 }
 
+func isValidPropertyName(name string) bool {
+	if len(name) == 0 {
+		return false
+	}
+	if !isLetter(name[0]) {
+		return false
+	}
+	for _, symbol := range name {
+		if !isLetter(byte(symbol)) && !isNumber(byte(symbol)) {
+			return false
+		}
+	}
+	return true
+}
+
 func propertyKey(p *parser) ast {
 	if p.acceptT(tBRACKET_LEFT) {
 		res := p.expectF(sequenceExpression)
@@ -957,6 +988,11 @@ func propertyKey(p *parser) ast {
 	}
 
 	if p.acceptF(otherLiteral) {
+		return makeNode(n_NON_IDENTIFIER_OBJECT_KEY, p.getLexeme())
+	}
+
+	if isValidPropertyName(p.getNext().lexeme) {
+		p.skipT()
 		return makeNode(n_NON_IDENTIFIER_OBJECT_KEY, p.getLexeme())
 	}
 
@@ -1228,7 +1264,7 @@ func exportStatement(p *parser) ast {
 				alias := name
 
 				if p.acceptT(tNAME) && p.getLexeme() == "as" {
-					p.tNext()
+					p.skipT()
 					alias = makeNode(n_EXPORT_ALIAS, p.getLexeme())
 				}
 				ev := makeNode(n_EXPORT_VAR, "", name, alias)

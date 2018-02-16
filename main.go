@@ -235,21 +235,21 @@ func createBundle(entryFileName, bundleFileName string, cache *bundleCache, conf
 		clearScreen()
 	}
 
-	if config.PermanentCache.Enable {
-		cacheSaveStart := time.Now()
-		cache.saveFile()
-		cacheSaveTime := time.Since(cacheSaveStart)
-		cprintf(c_GREEN, ">>Cache saved to %s in %s\n", config.PermanentCache.DirName, cacheSaveTime)
-	}
-
 	if err == nil {
+		if config.PermanentCache.Enable {
+			cacheSaveStart := time.Now()
+			cache.saveFile()
+			cacheSaveTime := time.Since(cacheSaveStart)
+			cprintf(c_GREEN, ">>Cache saved to %s in %s\n", config.PermanentCache.DirName, cacheSaveTime)
+		}
+
 		if len(warnings) > 0 {
 			fmt.Println()
 			cprintf(c_YELLOW, "%s\n", strings.Join(warnings, "\n"))
 		}
 		cprintf(c_GREEN, ">>Build finished in %s\n", buildTime)
 	} else {
-		cprintf(c_RED, "\n>>%s\n", err)
+		cprintf(c_RED, ">>%s\n", err)
 		return
 	}
 }
@@ -319,7 +319,7 @@ func addFilesToBundle(
 	errorCh := make(chan error, len(files))
 
 	for _, unbundledFile := range files {
-		addFileToBundle(unbundledFile, bundleSf, errorCh, cache)
+		go addFileToBundle(unbundledFile, bundleSf, errorCh, cache)
 	}
 
 	for counter := 0; counter < len(files); counter++ {

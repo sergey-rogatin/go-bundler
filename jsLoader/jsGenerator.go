@@ -11,7 +11,9 @@ func printAst(n ast) string {
 		n_EXPORT_ALIAS,
 		n_BOOL_LITERAL,
 		n_EXPORT_NAME,
-		n_TEMPLATE_LITERAL:
+		n_TEMPLATE_LITERAL,
+		n_NULL,
+		n_UNDEFINED:
 		return n.value
 
 	case n_LAMBDA_EXPRESSION:
@@ -208,7 +210,14 @@ func printAst(n ast) string {
 		return res
 
 	case n_PREFIX_UNARY_EXPRESSION:
-		return n.value + printAst(n.children[0])
+		res := n.value
+		if n.value == "typeof" ||
+			n.value == "void" ||
+			n.value == "delete" {
+			res += " "
+		}
+		res += printAst(n.children[0])
+		return res
 
 	case n_POSTFIX_UNARY_EXPRESSION:
 		return printAst(n.children[0]) + n.value
@@ -489,6 +498,15 @@ func printAst(n ast) string {
 	case n_THROW_STATEMENT:
 		expr := n.children[0]
 		return "throw " + printAst(expr) + ";"
+
+	case n_CONTROL_STATEMENT:
+		word := n.value
+		label := n.children[0]
+		res := word
+		if label.t != n_EMPTY {
+			res += " " + printAst(label)
+		}
+		return res + ";"
 
 	}
 

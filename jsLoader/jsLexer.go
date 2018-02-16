@@ -117,6 +117,12 @@ func lex(src []byte) []token {
 					eat(tNUMBER)
 				}
 			}
+			if c == 'e' || c == 'E' {
+				eat(tNUMBER)
+				for isNumber(c) {
+					eat(tNUMBER)
+				}
+			}
 			end()
 
 		case isLetter(c):
