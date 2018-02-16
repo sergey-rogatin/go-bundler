@@ -319,7 +319,7 @@ func addFilesToBundle(
 	errorCh := make(chan error, len(files))
 
 	for _, unbundledFile := range files {
-		go addFileToBundle(unbundledFile, bundleSf, errorCh, cache)
+		addFileToBundle(unbundledFile, bundleSf, errorCh, cache)
 	}
 
 	for counter := 0; counter < len(files); counter++ {

@@ -228,6 +228,7 @@ const (
 	tREGEXP
 	tESCAPE
 	tSPACE
+	tTEMPLATE_LITERAL
 )
 
 var tokenTypeNames = []string{
@@ -343,6 +344,7 @@ var tokenTypeNames = []string{
 	"tREGEXP",
 	"tESCAPE",
 	"tSPACE",
+	"tTEMPLATE_LITERAL",
 }
 
 func (t tokenType) String() string {
@@ -473,6 +475,14 @@ var nodeToString = []string{
 	"n_CLASS_PROPERTY",
 	"n_CLASS_STATIC_PROPERTY",
 	"n_LABEL",
+	"n_MULTISTATEMENT",
+	"n_TRY_CATCH_STATEMENT",
+	"n_SWITCH_STATEMENT",
+	"n_SWITCH_CASE",
+	"n_SWITCH_DEFAULT_CASE",
+	"n_TAGGED_LITERAL",
+	"n_TEMPLATE_LITERAL",
+	"n_THROW_STATEMENT",
 }
 
 func (n nodeType) String() string {
@@ -574,4 +584,13 @@ const (
 
 	n_LABEL
 	n_MULTISTATEMENT
+	n_TRY_CATCH_STATEMENT
+
+	n_SWITCH_STATEMENT
+	n_SWITCH_CASE
+	n_SWITCH_DEFAULT_CASE
+
+	n_TAGGED_LITERAL
+	n_TEMPLATE_LITERAL
+	n_THROW_STATEMENT
 )

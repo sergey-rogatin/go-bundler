@@ -10,7 +10,8 @@ func printAst(n ast) string {
 		n_IMPORT_NAME,
 		n_EXPORT_ALIAS,
 		n_BOOL_LITERAL,
-		n_EXPORT_NAME:
+		n_EXPORT_NAME,
+		n_TEMPLATE_LITERAL:
 		return n.value
 
 	case n_LAMBDA_EXPRESSION:
@@ -431,6 +432,63 @@ func printAst(n ast) string {
 			res += printAst(st)
 		}
 		return res
+
+	case n_TRY_CATCH_STATEMENT:
+		try := n.children[0]
+		errorID := n.children[1]
+		catch := n.children[2]
+		finally := n.children[3]
+
+		res := "try"
+		res += printAst(try)
+
+		if catch.t != n_EMPTY {
+			res += "catch(" + printAst(errorID) + ")" + printAst(catch)
+		}
+		if finally.t != n_EMPTY {
+			res += "finally" + printAst(finally)
+		}
+		return res
+
+	case n_SWITCH_STATEMENT:
+		cond := n.children[0]
+		cases := n.children[1]
+
+		res := "switch(" + printAst(cond) + "){"
+		res += printAst(cases)
+		res += "}"
+
+		return res
+
+	case n_SWITCH_CASE:
+		cond := n.children[0]
+		statements := n.children[1]
+
+		res := ""
+		if cond.t == n_EMPTY {
+			res += "default:"
+		} else {
+			res += "case " + printAst(cond) + ":"
+		}
+		res += printAst(statements)
+
+		return res
+
+	case n_LABEL:
+		name := n.value
+		st := n.children[0]
+		res := name + ":" + printAst(st)
+
+		return res
+
+	case n_TAGGED_LITERAL:
+		tag := n.children[0]
+		literal := n.children[1]
+		return printAst(tag) + printAst(literal)
+
+	case n_THROW_STATEMENT:
+		expr := n.children[0]
+		return "throw " + printAst(expr) + ";"
 
 	}
 

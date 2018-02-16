@@ -42,7 +42,7 @@ func isLetter(c byte) bool {
 func lex(src []byte) []token {
 	tokens := make([]token, 0)
 	if len(src) == 0 {
-		return tokens
+		return append(tokens, token{tEND_OF_INPUT, "", 0, 0, 0})
 	}
 
 	lastToken := token{}
@@ -54,10 +54,6 @@ func lex(src []byte) []token {
 
 	line := 1
 	column := 0
-
-	isStringParen := func(c byte) bool {
-		return c == '\'' || c == '"' || c == '`'
-	}
 
 	eat := func(tType tokenType) {
 		lastToken.tType = tType
@@ -132,13 +128,22 @@ func lex(src []byte) []token {
 			}
 			end()
 
-		case isStringParen(c):
+		case c == '\'' || c == '"':
 			startSymbol := c
 			eat(tSTRING)
 			for !(c == startSymbol && src[i-1] != '\\') {
 				eat(tSTRING)
 			}
 			eat(tSTRING)
+			end()
+
+		case c == '`':
+			startSymbol := c
+			eat(tTEMPLATE_LITERAL)
+			for !(c == startSymbol && src[i-1] != '\\') {
+				eat(tTEMPLATE_LITERAL)
+			}
+			eat(tTEMPLATE_LITERAL)
 			end()
 
 		case c == '\n':
@@ -153,14 +158,15 @@ func lex(src []byte) []token {
 			end()
 
 		case substr(i, i+2) == "//":
-			for c != '\n' {
+			for c != '\n' && i < len(src) {
 				skip()
 			}
 
 		case substr(i, i+2) == "/*":
-			for substr(i, i+2) != "*/" {
+			for substr(i, i+2) != "*/" && i < len(src) {
 				if c == '\n' {
 					line++
+					column = 0
 				}
 				skip()
 			}

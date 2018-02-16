@@ -1,6 +1,7 @@
 package jsLoader
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -537,6 +538,14 @@ func TestExportStatement(t *testing.T) {
 		exp string
 	}{
 		{
+			"export default class{};",
+			"export default class{};",
+		},
+		{
+			"export default class foo{};",
+			"class foo{}export default foo;",
+		},
+		{
 			"export default foo;",
 			"export default foo;",
 		},
@@ -821,6 +830,189 @@ func TestNewlineAndSemi(t *testing.T) {
 
 		res := printAst(le)
 		if res != c.exp {
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
+		}
+	}
+}
+
+func TestTryCatchStatement(t *testing.T) {
+	cases := []struct {
+		src string
+		exp string
+	}{
+		{
+			"try{foo;}",
+			"try{foo;}",
+		},
+		{
+			"try{}catch(foo){}",
+			"try{}catch(foo){}",
+		},
+		{
+			"try{}finally{}",
+			"try{}finally{}",
+		},
+		{
+			"try{}catch(foo){}finally{}",
+			"try{}catch(foo){}finally{}",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := program(&ps)
+
+		res := printAst(le)
+		if res != c.exp {
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
+		}
+	}
+}
+
+func TestSwitchStatement(t *testing.T) {
+	cases := []struct {
+		src string
+		exp string
+	}{
+		{
+			"switch(foo){case bar: baz;}",
+			"switch(foo){case bar:baz;}",
+		},
+		{
+			"switch(foo){default: buz;break;case bar: baz;}",
+			"switch(foo){default:buz;break;case bar:baz;}",
+		},
+		{
+			"switch(foo){}",
+			"switch(foo){}",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := program(&ps)
+
+		res := printAst(le)
+		if res != c.exp {
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
+		}
+	}
+}
+
+func TestLabelStatement(t *testing.T) {
+	cases := []struct {
+		src string
+		exp string
+	}{
+		{
+			"foo: bar;",
+			"foo:bar;",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := program(&ps)
+
+		res := printAst(le)
+		if res != c.exp {
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
+		}
+	}
+}
+
+func TestTemplateLiterals(t *testing.T) {
+	cases := []struct {
+		src string
+		exp string
+	}{
+		{
+			"foo`bar`;",
+			"foo`bar`;",
+		},
+		{
+			"foo()`bar`;",
+			"foo()`bar`;",
+		},
+		{
+			"(a + foo())`bar`;",
+			"(a+foo())`bar`;",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := program(&ps)
+
+		res := printAst(le)
+		if res != c.exp {
+			fmt.Println([]byte(res))
+			fmt.Println([]byte(c.exp))
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
+		}
+	}
+}
+
+func TestThrowStatement(t *testing.T) {
+	cases := []struct {
+		src string
+		exp string
+	}{
+		{
+			"throw foo,bar;",
+			"throw foo,bar;",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := program(&ps)
+
+		res := printAst(le)
+		if res != c.exp {
+			fmt.Println([]byte(res))
+			fmt.Println([]byte(c.exp))
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
+		}
+	}
+}
+
+func TestComments(t *testing.T) {
+	cases := []struct {
+		src string
+		exp string
+	}{
+		{
+			"//foo",
+			"",
+		},
+		{
+			`/** @license React v16.2.0
+			* react.development.js
+			*
+			* Copyright (c) 2013-present, Facebook, Inc.
+			*
+			* This source code is licensed under the MIT license found in the
+			* LICENSE file in the root directory of this source tree.
+			*/`,
+			"",
+		},
+	}
+
+	for _, c := range cases {
+		toks := lex([]byte(c.src))
+		le, _ := parseTokens(toks)
+
+		res := printAst(le)
+		if res != c.exp {
+			fmt.Println([]byte(res))
+			fmt.Println([]byte(c.exp))
 			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
 		}

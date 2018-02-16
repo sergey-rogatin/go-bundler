@@ -11,15 +11,12 @@ type ast struct {
 }
 
 /* TODO:
-try catch finally
-switch
-labels
-with
+with ?
 
-classes in exports
-tagged literals
 generator functions and yield
 async await
+
+check what keywords are allowed to be variable names and object property names
 
 
 test invalid syntax catching
@@ -191,9 +188,23 @@ func program(p *parser) ast {
 }
 
 func statement(p *parser) ast {
+	startIndex := p.i
+	if p.acceptT(tNAME) {
+		labelName := p.getLexeme()
+		if !p.acceptT(tCOLON) {
+			p.i = startIndex
+		} else {
+			st := p.expectF(statement)
+			return makeNode(n_LABEL, labelName, st)
+		}
+	}
+
 	if p.acceptT(tSEMI) {
 		return makeNode(n_EMPTY_STATEMENT, "")
-	} else if p.acceptF(declarationStatement) ||
+	} else if p.acceptF(throwStatement) ||
+		p.acceptF(switchStatement) ||
+		p.acceptF(tryCatchStatement) ||
+		p.acceptF(declarationStatement) ||
 		p.acceptF(classStatement) ||
 		p.acceptF(blockStatement) ||
 		p.acceptF(doWhileStatement) ||
@@ -208,7 +219,88 @@ func statement(p *parser) ast {
 		return p.getNode()
 	}
 
+	p.expectT(tEND_OF_INPUT)
 	return INVALID_NODE
+}
+
+func throwStatement(p *parser) ast {
+	if !p.acceptT(tTHROW) {
+		return INVALID_NODE
+	}
+	expr := p.expectF(sequenceExpression)
+	p.expectT(tSEMI)
+	return makeNode(n_THROW_STATEMENT, "", expr)
+}
+
+func switchCase(p *parser) ast {
+	var cond ast
+	statements := []ast{}
+
+	if p.acceptT(tCASE) {
+		cond = p.expectF(sequenceExpression)
+	} else if p.acceptT(tDEFAULT) {
+
+	} else {
+		return INVALID_NODE
+	}
+
+	p.expectT(tCOLON)
+
+	for !(p.getNext().tType == tCASE ||
+		p.getNext().tType == tDEFAULT ||
+		p.getNext().tType == tCURLY_RIGHT) {
+		statements = append(statements, p.expectF(statement))
+	}
+
+	return makeNode(
+		n_SWITCH_CASE, "", cond,
+		makeNode(n_MULTISTATEMENT, "", statements...),
+	)
+}
+
+func switchStatement(p *parser) ast {
+	if !p.acceptT(tSWITCH) {
+		return INVALID_NODE
+	}
+
+	var cond ast
+
+	p.expectT(tPAREN_LEFT)
+	cond = p.expectF(sequenceExpression)
+	p.expectT(tPAREN_RIGHT)
+	p.expectT(tCURLY_LEFT)
+
+	cases := []ast{}
+	for !p.acceptT(tCURLY_RIGHT) {
+		cases = append(cases, p.expectF(switchCase))
+	}
+
+	return makeNode(
+		n_SWITCH_STATEMENT, "", cond,
+		makeNode(n_MULTISTATEMENT, "", cases...),
+	)
+}
+
+func tryCatchStatement(p *parser) ast {
+	if !p.acceptT(tTRY) {
+		return INVALID_NODE
+	}
+
+	var try, errorID, catch, finally ast
+	try = p.expectF(blockStatement)
+
+	if p.acceptT(tCATCH) {
+		p.expectT(tPAREN_LEFT)
+		errorID = p.expectF(identifier)
+		p.expectT(tPAREN_RIGHT)
+		catch = p.expectF(blockStatement)
+	}
+
+	if p.acceptT(tFINALLY) {
+		finally = p.expectF(blockStatement)
+	}
+
+	return makeNode(n_TRY_CATCH_STATEMENT, "", try, errorID, catch, finally)
 }
 
 func importStatement(p *parser) ast {
@@ -363,10 +455,6 @@ func declarator(p *parser) ast {
 	}
 
 	return makeNode(n_DECLARATOR, "", name, value)
-}
-
-func expression(p *parser) ast {
-	return INVALID_NODE
 }
 
 func sequenceExpression(p *parser) ast {
@@ -557,6 +645,12 @@ func functionCallOrMemberExpression(p *parser) ast {
 			}
 
 			if property.t == n_EMPTY {
+				if p.acceptT(tTEMPLATE_LITERAL) {
+					return makeNode(
+						n_TAGGED_LITERAL, "", funcName,
+						makeNode(n_TEMPLATE_LITERAL, p.getLexeme()),
+					)
+				}
 				return funcName
 			}
 
@@ -765,6 +859,8 @@ func otherLiteral(p *parser) ast {
 		return makeNode(n_NULL, p.getLexeme())
 	} else if p.acceptT(tUNDEFINED) {
 		return makeNode(n_UNDEFINED, p.getLexeme())
+	} else if p.acceptT(tTEMPLATE_LITERAL) {
+		return makeNode(n_TEMPLATE_LITERAL, p.getLexeme())
 	}
 	return INVALID_NODE
 }
@@ -1107,6 +1203,15 @@ func exportStatement(p *parser) ast {
 			} else {
 				name = fe
 			}
+		} else if p.acceptF(classExpression) {
+			ce := p.getNode()
+			ceName := ce.children[0]
+			if ceName.t != n_EMPTY {
+				declaration = ce
+				name = ceName
+			} else {
+				name = ce
+			}
 		} else {
 			p.expectF(sequenceExpression)
 			name = p.getNode()
@@ -1156,6 +1261,14 @@ func exportStatement(p *parser) ast {
 		fs := p.getNode()
 		declaration = fs
 		name := fs.children[0]
+		alias := name
+		ev := makeNode(n_EXPORT_VAR, "", name, alias)
+		vars.children = append(vars.children, ev)
+
+	} else if p.acceptF(classStatement) {
+		cs := p.getNode()
+		declaration = cs
+		name := cs.children[0]
 		alias := name
 		ev := makeNode(n_EXPORT_VAR, "", name, alias)
 		vars.children = append(vars.children, ev)
