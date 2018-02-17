@@ -151,31 +151,20 @@ func lex(src []byte) []token {
 			end()
 
 		case c == '\'' || c == '"':
-			startSymbol := c
-			eat(tSTRING)
-			for !(c == startSymbol && src[i-1] != '\\') {
-				eat(tSTRING)
-			}
-			eat(tSTRING)
+			eat(tSTRING_QUOTE)
 			end()
 
 		case c == '`':
-			startSymbol := c
-			eat(tTEMPLATE_LITERAL)
-			for !(c == startSymbol && src[i-1] != '\\') {
-				eat(tTEMPLATE_LITERAL)
-			}
-			eat(tTEMPLATE_LITERAL)
+			eat(tTEMPLATE_LITERAL_QUOTE)
 			end()
 
-		case c == '\n':
-			//skip()
+		case c == '\n' || c == '\v' || c == '\f':
 			eat(tNEWLINE)
 			end()
 			line++
 			column = 0
 
-		case c == ' ':
+		case c == ' ' || c == '\t':
 			eat(tSPACE)
 			end()
 
@@ -220,7 +209,8 @@ func lex(src []byte) []token {
 				eat(op)
 				end()
 			} else {
-				skip()
+				eat(tANY)
+				end()
 			}
 		}
 	}

@@ -113,6 +113,7 @@ var operators = map[string]tokenType{
 
 const (
 	tUNDEFINED tokenType = iota
+	tANY
 	tEND_OF_INPUT
 
 	tNEWLINE

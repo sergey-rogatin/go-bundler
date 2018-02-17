@@ -21,61 +21,57 @@ func TestExpressions(t *testing.T) {
 		exp string
 	}{
 		{
-			"/[&<>']/g",
-			"",
+			"a>>>=b;",
+			"a>>>=b;",
 		},
-		// {
-		// 	"a>>>=b;",
-		// 	"a>>>=b;",
-		// },
-		// {
-		// 	"0o12345;",
-		// 	"0o12345;",
-		// },
-		// {
-		// 	"0b000100;",
-		// 	"0b000100;",
-		// },
-		// {
-		// 	"0x312abcdef;",
-		// 	"0x312abcdef;",
-		// },
-		// {
-		// 	"of=foo;",
-		// 	"of=foo;",
-		// },
-		// {
-		// 	"a=0e321;",
-		// 	"a=0e321;",
-		// },
-		// {
-		// 	"a + foo * 32;",
-		// 	"a+foo*32;",
-		// },
-		// {
-		// 	"fee = a**(b+'ds');",
-		// 	"fee=a**(b+'ds');",
-		// },
-		// {
-		// 	"a + b / /[A*^?-Z]/g;",
-		// 	"a+b//[A*^?-Z]/g;",
-		// },
-		// {
-		// 	"a + {foo:bar} * 3;",
-		// 	"a+{foo:bar}*3;",
-		// },
-		// {
-		// 	"!!(a+b);",
-		// 	"!!(a+b);",
-		// },
-		// {
-		// 	"foo && bar;",
-		// 	"foo&&bar;",
-		// },
-		// {
-		// 	"typeof foo;delete foo.bar;void foo;",
-		// 	"typeof foo;delete foo.bar;void foo;",
-		// },
+		{
+			"0o12345;",
+			"0o12345;",
+		},
+		{
+			"0b000100;",
+			"0b000100;",
+		},
+		{
+			"0x312abcdef;",
+			"0x312abcdef;",
+		},
+		{
+			"of=foo;",
+			"of=foo;",
+		},
+		{
+			"a=0e321;",
+			"a=0e321;",
+		},
+		{
+			"a + foo * 32;",
+			"a+foo*32;",
+		},
+		{
+			"fee = a**(b+'ds');",
+			"fee=a**(b+'ds');",
+		},
+		{
+			"a + b / /[A*^?-Z]/g;",
+			"a+b//[A*^?-Z]/g;",
+		},
+		{
+			"a + {foo:bar} * 3;",
+			"a+{foo:bar}*3;",
+		},
+		{
+			"!!(a+b);",
+			"!!(a+b);",
+		},
+		{
+			"foo && bar;",
+			"foo&&bar;",
+		},
+		{
+			"typeof foo;delete foo.bar;void foo;",
+			"typeof foo;delete foo.bar;void foo;",
+		},
 	}
 
 	for _, c := range cases {
@@ -387,9 +383,13 @@ func TestStringLiteral(t *testing.T) {
 		src string
 		exp string
 	}{
+		// {
+		// 	"'foo \\' + fsbds';",
+		// 	"'foo \\' + fsbds';",
+		// },
 		{
-			"'foo \\' + fsbds';",
-			"'foo \\' + fsbds';",
+			`'foo//bar'`,
+			"",
 		},
 	}
 

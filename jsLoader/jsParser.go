@@ -410,10 +410,7 @@ func importStatement(p *parser) ast {
 		}
 	}
 
-	p.expectT(tSTRING)
-	val := p.getLexeme()
-	val = val[1 : len(val)-1]
-	path.value = val
+	path.value = p.expectF(stringLiteral).value
 	p.expectT(tSEMI)
 
 	return makeNode(n_IMPORT_STATEMENT, "", vars, all, path)
@@ -701,12 +698,10 @@ func functionCallOrMemberExpression(p *parser) ast {
 			}
 
 			if property.t == n_EMPTY {
-				if p.acceptT(tTEMPLATE_LITERAL) {
-					val := p.getLexeme()
-					val = val[1 : len(val)-1]
+				if p.acceptF(templateLiteral) {
 					return makeNode(
 						n_TAGGED_LITERAL, "", funcName,
-						makeNode(n_TEMPLATE_LITERAL, val),
+						p.getNode(),
 					)
 				}
 				return funcName
@@ -907,11 +902,41 @@ func objectLiteral(p *parser) ast {
 	return makeNode(n_OBJECT_LITERAL, "", props...)
 }
 
+func stringLiteral(p *parser) ast {
+	if !p.acceptT(tSTRING_QUOTE) {
+		return INVALID_NODE
+	}
+	firstQuote := p.getLexeme()
+	value := ""
+	for !(p.tokens[p.i].lexeme == firstQuote &&
+		p.tokens[p.i-1].tType != tESCAPE) {
+		value += p.tokens[p.i].lexeme
+		p.i++
+	}
+	p.i++
+
+	return makeNode(n_STRING_LITERAL, value)
+}
+
+func templateLiteral(p *parser) ast {
+	if !p.acceptT(tTEMPLATE_LITERAL_QUOTE) {
+		return INVALID_NODE
+	}
+	firstQuote := p.getLexeme()
+	value := ""
+	for !(p.tokens[p.i].lexeme == firstQuote &&
+		p.tokens[p.i-1].tType != tESCAPE) {
+		value += p.tokens[p.i].lexeme
+		p.i++
+	}
+	p.i++
+
+	return makeNode(n_TEMPLATE_LITERAL, value)
+}
+
 func otherLiteral(p *parser) ast {
-	if p.acceptT(tSTRING) {
-		lexeme := p.getLexeme()
-		value := lexeme[1 : len(lexeme)-1]
-		return makeNode(n_STRING_LITERAL, value)
+	if p.acceptF(stringLiteral) {
+		return p.getNode()
 	} else if p.acceptT(tNUMBER) {
 		return makeNode(n_NUMBER_LITERAL, p.getLexeme())
 	} else if p.acceptT(tTRUE, tFALSE) {
@@ -920,10 +945,8 @@ func otherLiteral(p *parser) ast {
 		return makeNode(n_NULL, p.getLexeme())
 	} else if p.acceptT(tUNDEFINED) {
 		return makeNode(n_UNDEFINED, p.getLexeme())
-	} else if p.acceptT(tTEMPLATE_LITERAL) {
-		lexeme := p.getLexeme()
-		value := lexeme[1 : len(lexeme)-1]
-		return makeNode(n_TEMPLATE_LITERAL, value)
+	} else if p.acceptF(templateLiteral) {
+		return p.getNode()
 	}
 	return INVALID_NODE
 }
@@ -1035,12 +1058,12 @@ func propertyKey(p *parser) ast {
 	}
 
 	if p.acceptF(otherLiteral) {
-		return makeNode(n_NON_IDENTIFIER_OBJECT_KEY, p.getLexeme())
+		return makeNode(n_NON_IDENTIFIER_OBJECT_KEY, "", p.getNode())
 	}
 
 	if isValidPropertyName(p.getNext().lexeme) {
 		p.skipT()
-		return makeNode(n_NON_IDENTIFIER_OBJECT_KEY, p.getLexeme())
+		return makeNode(n_NON_IDENTIFIER_OBJECT_KEY, "", makeNode(n_IDENTIFIER, p.getLexeme()))
 	}
 
 	return INVALID_NODE
@@ -1336,10 +1359,7 @@ func exportStatement(p *parser) ast {
 		}
 
 		if p.acceptT(tNAME) && p.getLexeme() == "from" {
-			p.expectT(tSTRING)
-			val := p.getLexeme()
-			val = val[1 : len(val)-1]
-			path = makeNode(n_STRING_LITERAL, val)
+			path = p.expectF(stringLiteral)
 		}
 		p.expectT(tSEMI)
 
@@ -1374,10 +1394,7 @@ func exportStatement(p *parser) ast {
 		if p.getLexeme() != "from" {
 			return INVALID_NODE
 		}
-		p.expectT(tSTRING)
-		val := p.getLexeme()
-		val = val[1 : len(val)-1]
-		path = makeNode(n_STRING_LITERAL, val)
+		path = p.expectF(stringLiteral)
 		vars.t = n_EXPORT_ALL
 		p.expectT(tSEMI)
 	}

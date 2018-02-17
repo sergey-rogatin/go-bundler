@@ -99,8 +99,10 @@ func printAst(n ast) string {
 		res += printAst(key) + printAst(params) + printAst(body)
 		return res
 
-	case n_NON_IDENTIFIER_OBJECT_KEY,
-		n_OBJECT_KEY:
+	case n_NON_IDENTIFIER_OBJECT_KEY:
+		return printAst(n.children[0])
+
+	case n_OBJECT_KEY:
 		return n.value
 
 	case n_CALCULATED_OBJECT_KEY:
