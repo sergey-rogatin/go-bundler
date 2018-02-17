@@ -39,7 +39,7 @@ func TestImportTransform(t *testing.T) {
 		setParser(c.src)
 		ast, _ := parseTokens(ps.tokens)
 
-		ctx := context{"a.js", []string{}, false}
+		ctx := context{"a.js", []string{}, false, nil}
 		transAst := modifyImport(ast.children[0], &ctx)
 
 		str := printAst(transAst)
@@ -66,7 +66,7 @@ func TestRequireTransform(t *testing.T) {
 	for _, c := range cases {
 		setParser(c.src)
 		ast, _ := parseTokens(ps.tokens)
-		ctx := context{"a.js", []string{}, false}
+		ctx := context{"a.js", []string{}, false, nil}
 		transAst := modifyFunctionCall(ast.children[0], &ctx)
 
 		str := printAst(transAst)
@@ -129,7 +129,7 @@ func TestExportTransform(t *testing.T) {
 	for _, c := range cases {
 		setParser(c.src)
 		ast, _ := parseTokens(ps.tokens)
-		ctx := context{"a.js", []string{}, false}
+		ctx := context{"a.js", []string{}, false, nil}
 		transAst := modifyExport(ast.children[0], &ctx)
 
 		str := printAst(transAst)
@@ -156,7 +156,7 @@ func TestProgramTransform(t *testing.T) {
 	for _, c := range cases {
 		setParser(c.src)
 		ast, _ := parseTokens(ps.tokens)
-		ctx := context{"a.js", []string{}, false}
+		ctx := context{"a.js", []string{}, false, nil}
 		transAst := modifyProgram(ast, &ctx)
 
 		str := printAst(transAst)

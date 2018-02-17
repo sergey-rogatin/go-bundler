@@ -522,6 +522,11 @@ func printAst(n ast) string {
 	case n_AWAIT_EXPRESSION:
 		return "await " + printAst(n.children[0])
 
+	case n_WITH_STATEMENT:
+		expr := n.children[0]
+		st := n.children[1]
+		return "with(" + printAst(expr) + ")" + printAst(st)
+
 	}
 
 	return ""

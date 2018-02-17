@@ -4,33 +4,25 @@ import (
 	"fmt"
 )
 
-type ast struct {
-	t        nodeType
-	value    string
-	children []ast
-}
-
 /* TODO:
-with ?????
 
 return, yield and other constructions that do not permit newline
 
 check what keywords are allowed to be variable names and object property names
 
 static analysis:
-	NODE_ENV === 'production'
-	tree-shaking
+	replace imported vars in whole module
+	tree-shaking ? read more about it
 
 
 test invalid syntax catching
 */
 
-const (
-	f_ACCEPT_NO_FUNCTION_CALL = 1 << 0
-	f_ACCEPT_NO_IN            = 1 << 1
-	f_GENERATOR_FUNCTION      = 1 << 2
-	f_ASYNC_FUNCTION          = 1 << 3
-)
+type ast struct {
+	t        nodeType
+	value    string
+	children []ast
+}
 
 func (a ast) String() string {
 	result := "{" + fmt.Sprint(a.t)
@@ -49,6 +41,13 @@ func makeNode(t nodeType, value string, children ...ast) ast {
 }
 
 var INVALID_NODE = ast{t: n_INVALID}
+
+const (
+	f_ACCEPT_NO_FUNCTION_CALL = 1 << 0
+	f_ACCEPT_NO_IN            = 1 << 1
+	f_GENERATOR_FUNCTION      = 1 << 2
+	f_ASYNC_FUNCTION          = 1 << 3
+)
 
 type parser struct {
 	tokens []token
@@ -207,7 +206,9 @@ func statement(p *parser) ast {
 
 	if p.acceptT(tSEMI) {
 		return makeNode(n_EMPTY_STATEMENT, "")
-	} else if p.acceptF(throwStatement) ||
+	}
+
+	if p.acceptF(throwStatement) ||
 		p.acceptF(switchStatement) ||
 		p.acceptF(tryCatchStatement) ||
 		p.acceptF(declarationStatement) ||
@@ -221,12 +222,26 @@ func statement(p *parser) ast {
 		p.acceptF(exportStatement) ||
 		p.acceptF(importStatement) ||
 		p.acceptF(functionExpression(true)) ||
+		p.acceptF(withStatement) ||
 		p.acceptF(expressionStatement) {
 		return p.getNode()
 	}
 
 	p.expectT(tEND_OF_INPUT)
 	return INVALID_NODE
+}
+
+func withStatement(p *parser) ast {
+	if !p.acceptT(tWITH) {
+		return INVALID_NODE
+	}
+	p.expectT(tPAREN_LEFT)
+	expr := p.expectF(sequenceExpression)
+	p.expectT(tPAREN_RIGHT)
+
+	st := p.expectF(statement)
+
+	return makeNode(n_WITH_STATEMENT, "", expr, st)
 }
 
 func throwStatement(p *parser) ast {

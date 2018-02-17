@@ -42,7 +42,7 @@ func getNiceError(pe *parsingError, src []byte) string {
 	return resLine0 + resLine1 + resLine2
 }
 
-func LoadFile(src []byte, filePath string) ([]byte, []string, error) {
+func LoadFile(src []byte, filePath string, env map[string]string) ([]byte, []string, error) {
 	tokens := lex(src)
 	initialProgram, parseErr := parseTokens(tokens)
 	if parseErr != nil {
@@ -54,7 +54,7 @@ func LoadFile(src []byte, filePath string) ([]byte, []string, error) {
 		return nil, nil, loaderErr
 	}
 
-	resultProgram, fileImports := transformIntoModule(initialProgram, filePath)
+	resultProgram, fileImports := transformIntoModule(initialProgram, filePath, env)
 	resultBytes := []byte(printAst(resultProgram))
 	return resultBytes, fileImports, nil
 }
@@ -66,10 +66,20 @@ type context struct {
 	fileName      string
 	fileImports   []string
 	hasES6Exports bool
+	env           map[string]string
 }
 
 func modifyAst(n ast, ctx *context) ast {
 	switch n.t {
+
+	case n_BINARY_EXPRESSION:
+		return modifyBinaryExpression(n, ctx)
+
+	case n_MEMBER_EXPRESSION:
+		return modifyMemberExpression(n, ctx)
+
+	case n_IF_STATEMENT:
+		return modifyIfStatement(n, ctx)
 
 	case n_FUNCTION_CALL:
 		return modifyFunctionCall(n, ctx)
@@ -91,6 +101,75 @@ func modifyAst(n ast, ctx *context) ast {
 		}
 		return res
 	}
+}
+
+func modifyBinaryExpression(n ast, ctx *context) ast {
+	operator := n.value
+	left := modifyAst(n.children[0], ctx)
+	right := modifyAst(n.children[1], ctx)
+
+	if operator == "===" {
+		if left.t == right.t {
+			if left.value == right.value {
+				return makeNode(n_BOOL_LITERAL, "true")
+			}
+			return makeNode(n_BOOL_LITERAL, "false")
+		}
+	}
+
+	res := n
+	res.children = []ast{}
+	for _, c := range n.children {
+		res.children = append(res.children, modifyAst(c, ctx))
+	}
+	return res
+}
+
+func modifyMemberExpression(n ast, ctx *context) ast {
+	object := n.children[0]
+	prop := n.children[1]
+
+	if object.t == n_MEMBER_EXPRESSION {
+		innerObject := object.children[0]
+		innerProp := object.children[1]
+
+		if innerObject.t == n_IDENTIFIER &&
+			innerObject.value == "process" &&
+			innerProp.t == n_IDENTIFIER &&
+			innerProp.value == "env" {
+
+			if envVal, ok := ctx.env[prop.value]; ok {
+				return makeNode(n_STRING_LITERAL, "'"+envVal+"'")
+			}
+		}
+	}
+
+	children := []ast{}
+	for _, c := range n.children {
+		children = append(children, modifyAst(c, ctx))
+	}
+	n.children = children
+	return n
+}
+
+func modifyIfStatement(n ast, ctx *context) ast {
+	cond := modifyAst(n.children[0], ctx)
+	conseq := n.children[1]
+	altern := n.children[2]
+
+	if cond.t == n_BOOL_LITERAL {
+		if cond.value == "true" {
+			return modifyAst(conseq, ctx)
+		}
+		return modifyAst(altern, ctx)
+	}
+
+	res := n
+	res.children = []ast{}
+	for _, c := range n.children {
+		res.children = append(res.children, modifyAst(c, ctx))
+	}
+	return res
 }
 
 func modifyProgram(n ast, ctx *context) ast {
@@ -346,10 +425,11 @@ func modifyExport(n ast, ctx *context) ast {
 	return multi
 }
 
-func transformIntoModule(src ast, fileName string) (ast, []string) {
+func transformIntoModule(src ast, fileName string, env map[string]string) (ast, []string) {
 	ctx := context{}
 	ctx.fileImports = []string{}
 	ctx.fileName = fileName
+	ctx.env = env
 
 	res := modifyAst(src, &ctx)
 

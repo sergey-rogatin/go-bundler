@@ -122,6 +122,7 @@ type configJSON struct {
 	TemplateHTML string
 	BundleDir    string
 	WatchFiles   bool
+	Env          map[string]string
 	DevServer    struct {
 		Enable bool
 		Port   int
@@ -225,7 +226,7 @@ func createBundle(entryFileName, bundleFileName string, cache *bundleCache, conf
 	}
 
 	sf.write([]byte(getJsBundleFileHead()))
-	err := addFilesToBundle([]string{entryFileName}, sf, cache)
+	err := addFilesToBundle([]string{entryFileName}, sf, cache, config)
 
 	tail, warnings := getJsBundleFileTail(entryFileName, cache)
 	sf.write(tail)
@@ -275,7 +276,7 @@ func getJsBundleFileHead() string {
 		return module.exports;
 	}
 	var moduleFns={},modules={};
-	var process={env:{NODE_ENV:'development'}};`
+	var process={env:{}};`
 	return start
 }
 
@@ -315,11 +316,12 @@ func addFilesToBundle(
 	files []string,
 	bundleSf *safeFile,
 	cache *bundleCache,
+	config *configJSON,
 ) error {
 	errorCh := make(chan error, len(files))
 
 	for _, unbundledFile := range files {
-		go addFileToBundle(unbundledFile, bundleSf, errorCh, cache)
+		go addFileToBundle(unbundledFile, bundleSf, errorCh, cache, config)
 	}
 
 	for counter := 0; counter < len(files); counter++ {
@@ -346,6 +348,7 @@ func addFileToBundle(
 	bundleSf *safeFile,
 	errorCh chan error,
 	cache *bundleCache,
+	config *configJSON,
 ) {
 	var data []byte
 	var fileImports []string
@@ -393,7 +396,7 @@ func addFileToBundle(
 				return
 			}
 
-			data, fileImports, err = jsLoader.LoadFile(src, fileName)
+			data, fileImports, err = jsLoader.LoadFile(src, fileName, config.Env)
 			if err != nil {
 				saveCache()
 				errorCh <- err
@@ -409,7 +412,7 @@ func addFileToBundle(
 	bundleSf.write(data)
 
 	saveCache()
-	err = addFilesToBundle(fileImports, bundleSf, cache)
+	err = addFilesToBundle(fileImports, bundleSf, cache, config)
 
 	errorCh <- err
 }

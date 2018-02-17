@@ -1094,3 +1094,28 @@ func TestAsyncFunction(t *testing.T) {
 		}
 	}
 }
+
+func TestWithStatement(t *testing.T) {
+	cases := []struct {
+		src string
+		exp string
+	}{
+		{
+			"with(foo){}",
+			"with(foo){}",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := program(&ps)
+
+		res := printAst(le)
+		if res != c.exp {
+			fmt.Println([]byte(res))
+			fmt.Println([]byte(c.exp))
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
+		}
+	}
+}
