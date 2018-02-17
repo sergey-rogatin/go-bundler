@@ -196,11 +196,18 @@ func lex(src []byte) []token {
 			skip()
 
 		default:
+			fourOp := substr(i, i+4)
 			threeOp := substr(i, i+3)
 			twoOp := substr(i, i+2)
 			oneOp := substr(i, i+1)
 
-			if op, ok := operators[threeOp]; ok {
+			if op, ok := operators[fourOp]; ok {
+				eat(op)
+				eat(op)
+				eat(op)
+				eat(op)
+				end()
+			} else if op, ok := operators[threeOp]; ok {
 				eat(op)
 				eat(op)
 				eat(op)

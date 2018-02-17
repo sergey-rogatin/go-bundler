@@ -222,13 +222,13 @@ const (
 	tSPREAD
 
 	tNUMBER
-	tSTRING
+	tSTRING_QUOTE
 	tNAME
 	tHEX
 	tREGEXP
 	tESCAPE
 	tSPACE
-	tTEMPLATE_LITERAL
+	tTEMPLATE_LITERAL_QUOTE
 )
 
 var tokenTypeNames = []string{
