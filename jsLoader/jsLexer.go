@@ -88,13 +88,13 @@ func lex(src []byte) []token {
 		return ""
 	}
 
-	skip := func() {
-		i++
-		column++
-		if i < len(src) {
-			c = src[i]
-		}
-	}
+	// skip := func() {
+	// 	i++
+	// 	column++
+	// 	if i < len(src) {
+	// 		c = src[i]
+	// 	}
+	// }
 
 	for i < len(src) {
 		switch {
@@ -169,20 +169,19 @@ func lex(src []byte) []token {
 			end()
 
 		case substr(i, i+2) == "//":
-			for c != '\n' && i < len(src) {
-				skip()
-			}
+			eat(tLINE_COMMENT_START)
+			eat(tLINE_COMMENT_START)
+			end()
 
 		case substr(i, i+2) == "/*":
-			for substr(i, i+2) != "*/" && i < len(src) {
-				if c == '\n' {
-					line++
-					column = 0
-				}
-				skip()
-			}
-			skip()
-			skip()
+			eat(tBLOCK_COMMENT_START)
+			eat(tBLOCK_COMMENT_START)
+			end()
+
+		case substr(i, i+2) == "*/":
+			eat(tBLOCK_COMMENT_END)
+			eat(tBLOCK_COMMENT_END)
+			end()
 
 		default:
 			fourOp := substr(i, i+4)

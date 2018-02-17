@@ -755,7 +755,8 @@ func constructorCall(p *parser) ast {
 }
 
 func atom(p *parser) ast {
-	if p.acceptF(classExpression) ||
+	if p.acceptF(comment) ||
+		p.acceptF(classExpression) ||
 		p.acceptF(objectLiteral) ||
 		p.acceptF(otherLiteral) ||
 		p.acceptF(lambdaExpression) ||
@@ -767,6 +768,27 @@ func atom(p *parser) ast {
 		return p.getNode()
 	}
 
+	return INVALID_NODE
+}
+
+func comment(p *parser) ast {
+	if p.acceptT(tLINE_COMMENT_START) {
+		value := ""
+		for p.i < len(p.tokens)-1 && p.tokens[p.i].tType != tNEWLINE {
+			value += p.tokens[p.i].lexeme
+			p.i++
+		}
+		//return makeNode(n_LINE_COMMENT, value)
+	}
+	if p.acceptT(tBLOCK_COMMENT_START) {
+		value := ""
+		for p.tokens[p.i].tType != tBLOCK_COMMENT_END {
+			value += p.tokens[p.i].lexeme
+			p.i++
+		}
+		p.i++
+		//return makeNode(n_BLOCK_COMMENT, value)
+	}
 	return INVALID_NODE
 }
 

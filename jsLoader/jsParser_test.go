@@ -383,13 +383,13 @@ func TestStringLiteral(t *testing.T) {
 		src string
 		exp string
 	}{
-		// {
-		// 	"'foo \\' + fsbds';",
-		// 	"'foo \\' + fsbds';",
-		// },
 		{
-			`'foo//bar'`,
-			"",
+			"'foo \\' + fsbds';",
+			"'foo \\' + fsbds';",
+		},
+		{
+			"'foo//bar';",
+			"'foo//bar';",
 		},
 	}
 
