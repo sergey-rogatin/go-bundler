@@ -1040,3 +1040,57 @@ func TestComments(t *testing.T) {
 		}
 	}
 }
+
+func TestGeneratorFunction(t *testing.T) {
+	cases := []struct {
+		src string
+		exp string
+	}{
+		{
+			"function* foo() {yield bar;}",
+			"function* foo(){yield bar;}",
+		},
+		{
+			"a=function*(){yield bar,yield baz;};",
+			"a=function*(){yield bar,yield baz;};",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := program(&ps)
+
+		res := printAst(le)
+		if res != c.exp {
+			fmt.Println([]byte(res))
+			fmt.Println([]byte(c.exp))
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
+		}
+	}
+}
+
+func TestAsyncFunction(t *testing.T) {
+	cases := []struct {
+		src string
+		exp string
+	}{
+		{
+			"async function foo(){await bar;}",
+			"async function foo(){await bar;}",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := program(&ps)
+
+		res := printAst(le)
+		if res != c.exp {
+			fmt.Println([]byte(res))
+			fmt.Println([]byte(c.exp))
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
+		}
+	}
+}

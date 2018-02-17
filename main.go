@@ -143,7 +143,7 @@ func main() {
 
 	configFile, err := ioutil.ReadFile(configFileName)
 	if err != nil {
-		fmt.Println("Unable to load config file!")
+		cprintf(c_YELLOW, ">>Warning: Unable to load config file!\n")
 	} else {
 		json.Unmarshal(configFile, &config)
 	}
@@ -338,7 +338,7 @@ type fileError struct {
 }
 
 func (fe fileError) Error() string {
-	return ">>Error: " + fe.err + " '" + fe.path + "'"
+	return "Error: " + fe.err + " '" + fe.path + "'"
 }
 
 func addFileToBundle(

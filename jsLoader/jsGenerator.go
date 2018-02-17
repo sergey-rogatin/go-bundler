@@ -147,7 +147,7 @@ func printAst(n ast) string {
 		name := n.children[0]
 		params := n.children[1]
 		body := n.children[2]
-		res := "function"
+		res := "function" + n.value
 		if name.value != "" {
 			res += " " + printAst(name)
 		}
@@ -507,6 +507,20 @@ func printAst(n ast) string {
 			res += " " + printAst(label)
 		}
 		return res + ";"
+
+	case n_YIELD_EXPRESSION:
+		expr := n.children[0]
+		res := "yield" + n.value
+		if expr.t != n_EMPTY {
+			res += " " + printAst(expr)
+		}
+		return res
+
+	case n_ASYNC_FUNCTION:
+		return "async " + printAst(n.children[0])
+
+	case n_AWAIT_EXPRESSION:
+		return "await " + printAst(n.children[0])
 
 	}
 

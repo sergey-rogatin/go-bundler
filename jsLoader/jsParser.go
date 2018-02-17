@@ -11,10 +11,9 @@ type ast struct {
 }
 
 /* TODO:
-with ?
+with ?????
 
-generator functions and yield
-async await
+return, yield and other constructions that do not permit newline
 
 check what keywords are allowed to be variable names and object property names
 
@@ -29,6 +28,8 @@ test invalid syntax catching
 const (
 	f_ACCEPT_NO_FUNCTION_CALL = 1 << 0
 	f_ACCEPT_NO_IN            = 1 << 1
+	f_GENERATOR_FUNCTION      = 1 << 2
+	f_ASYNC_FUNCTION          = 1 << 3
 )
 
 func (a ast) String() string {
@@ -219,7 +220,7 @@ func statement(p *parser) ast {
 		p.acceptF(forStatement) ||
 		p.acceptF(exportStatement) ||
 		p.acceptF(importStatement) ||
-		p.acceptF(functionDeclaration) ||
+		p.acceptF(functionExpression(true)) ||
 		p.acceptF(expressionStatement) {
 		return p.getNode()
 	}
@@ -492,6 +493,23 @@ func sequenceExpression(p *parser) ast {
 }
 
 func assignmentExpression(p *parser) ast {
+	if p.testFlag(f_GENERATOR_FUNCTION) {
+		if p.acceptT(tYIELD) {
+			value := ""
+			if p.acceptT(tMULT) {
+				value = "*"
+			}
+
+			var expr ast
+
+			if p.getNext().tType != tSEMI {
+				expr = p.expectF(assignmentExpression)
+			}
+
+			return makeNode(n_YIELD_EXPRESSION, value, expr)
+		}
+	}
+
 	prevIndex := p.i
 
 	if p.acceptF(objectPattern) ||
@@ -604,6 +622,12 @@ func binaryExpression(p *parser) ast {
 }
 
 func prefixUnaryExpression(p *parser) ast {
+	if p.testFlag(f_ASYNC_FUNCTION) {
+		if p.acceptT(tAWAIT) {
+			return makeNode(n_AWAIT_EXPRESSION, "", p.expectF(prefixUnaryExpression))
+		}
+	}
+
 	if p.acceptT(
 		tNOT, tBITWISE_NOT, tPLUS, tMINUS,
 		tINC, tDEC, tTYPEOF, tVOID, tDELETE,
@@ -699,9 +723,9 @@ func constructorCall(p *parser) ast {
 	if p.acceptT(tNEW) {
 		var name, args ast
 
-		p.flags = f_ACCEPT_NO_FUNCTION_CALL
+		p.flags |= f_ACCEPT_NO_FUNCTION_CALL
 		name = p.expectF(functionCallOrMemberExpression)
-		p.flags = 0
+		p.flags &= ^f_ACCEPT_NO_FUNCTION_CALL
 
 		if p.acceptF(functionArgs) {
 			args = p.getNode()
@@ -725,7 +749,7 @@ func atom(p *parser) ast {
 		p.acceptF(regexpLiteral) ||
 		p.acceptF(arrayLiteral) ||
 		p.acceptF(identifier) ||
-		p.acceptF(functionExpression) {
+		p.acceptF(functionExpression(false)) {
 		return p.getNode()
 	}
 
@@ -1069,34 +1093,45 @@ func blockStatement(p *parser) ast {
 	return makeNode(n_BLOCK_STATEMENT, "", statements...)
 }
 
-func functionExpression(p *parser) ast {
-	if !p.acceptT(tFUNCTION) {
-		return INVALID_NODE
+func functionExpression(isDeclaration bool) func(*parser) ast {
+	return func(p *parser) ast {
+		isAsync := false
+		if p.acceptT(tASYNC) {
+			isAsync = true
+		}
+		if !p.acceptT(tFUNCTION) {
+			return INVALID_NODE
+		}
+		typ := ""
+		if p.acceptT(tMULT) {
+			typ = "*"
+		}
+
+		var name, params, body ast
+		if isDeclaration {
+			name = p.expectF(identifier)
+		} else if p.acceptF(identifier) {
+			name = p.getNode()
+		}
+
+		params = p.expectF(functionParameters)
+
+		if isAsync {
+			p.flags |= f_ASYNC_FUNCTION
+		}
+		if typ == "*" {
+			p.flags |= f_GENERATOR_FUNCTION
+		}
+		body = p.expectF(blockStatement)
+		p.flags &= ^f_GENERATOR_FUNCTION
+		p.flags &= ^f_ASYNC_FUNCTION
+
+		funcExpr := makeNode(n_FUNCTION_EXPRESSION, typ, name, params, body)
+		if isAsync {
+			return makeNode(n_ASYNC_FUNCTION, "", funcExpr)
+		}
+		return funcExpr
 	}
-
-	var name, params, body ast
-	if p.acceptF(identifier) {
-		name = p.getNode()
-	}
-
-	params = p.expectF(functionParameters)
-	body = p.expectF(blockStatement)
-
-	return makeNode(n_FUNCTION_EXPRESSION, "", name, params, body)
-}
-
-func functionDeclaration(p *parser) ast {
-	if !p.acceptT(tFUNCTION) {
-		return INVALID_NODE
-	}
-
-	var name, params, body ast
-
-	name = p.expectF(identifier)
-	params = p.expectF(functionParameters)
-	body = p.expectF(blockStatement)
-
-	return makeNode(n_FUNCTION_DECLARATION, "", name, params, body)
 }
 
 func whileStatement(p *parser) ast {
@@ -1229,7 +1264,7 @@ func exportStatement(p *parser) ast {
 		var name, alias ast
 
 		alias = makeNode(n_EXPORT_ALIAS, "default")
-		if p.acceptF(functionExpression) {
+		if p.acceptF(functionExpression(false)) {
 			fe := p.getNode()
 			feName := fe.children[0]
 
@@ -1293,7 +1328,7 @@ func exportStatement(p *parser) ast {
 			vars.children = append(vars.children, ev)
 		}
 
-	} else if p.acceptF(functionDeclaration) {
+	} else if p.acceptF(functionExpression(true)) {
 		fs := p.getNode()
 		declaration = fs
 		name := fs.children[0]

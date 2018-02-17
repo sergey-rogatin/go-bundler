@@ -5,6 +5,7 @@ import (
 )
 
 const (
+	c_RESET  = "\033[0;0m"
 	c_BLACK  = "\033[0;30m"
 	c_RED    = "\033[0;31m"
 	c_GREEN  = "\033[0;32m"
@@ -15,7 +16,7 @@ const (
 	c_WHITE  = "\033[0;37m"
 )
 
-func cprintf(color string, format string, a ...interface{}) {
-	format = color + format + c_WHITE
+func cprintf(color, format string, a ...interface{}) {
+	format = color + format + c_RESET
 	fmt.Printf(format, a...)
 }
