@@ -4,17 +4,21 @@ func printAst(n ast) string {
 	switch n.t {
 	case n_IDENTIFIER,
 		n_NUMBER_LITERAL,
-		n_STRING_LITERAL,
 		n_CONTROL_WORD,
 		n_IMPORT_ALIAS,
 		n_IMPORT_NAME,
 		n_EXPORT_ALIAS,
 		n_BOOL_LITERAL,
 		n_EXPORT_NAME,
-		n_TEMPLATE_LITERAL,
 		n_NULL,
 		n_UNDEFINED:
 		return n.value
+
+	case n_STRING_LITERAL:
+		return "'" + n.value + "'"
+
+	case n_TEMPLATE_LITERAL:
+		return "`" + n.value + "`"
 
 	case n_LAMBDA_EXPRESSION:
 		params := n.children[0]
@@ -349,7 +353,7 @@ func printAst(n ast) string {
 		result += "export"
 
 		if n.children[0].t == n_EXPORT_ALL {
-			return "export*" + printAst(n.children[2]) + ";"
+			return "export* from" + printAst(n.children[2]) + ";"
 		}
 
 		vars := n.children[0].children
@@ -374,16 +378,12 @@ func printAst(n ast) string {
 			result += "}"
 		}
 
-		result += printAst(n.children[2]) // export path
+		if n.children[2].value != "" {
+			result += " from" + printAst(n.children[2]) // export path
+		}
 
 		result += ";"
 		return result
-
-	case n_EXPORT_PATH:
-		if n.value != "" {
-			return " from" + n.value
-		}
-		return ""
 
 	case n_EXPORT_VAR:
 		result := printAst(n.children[0]) // name

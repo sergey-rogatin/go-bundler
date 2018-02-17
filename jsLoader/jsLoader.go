@@ -108,9 +108,9 @@ func modifyBinaryExpression(n ast, ctx *context) ast {
 	left := modifyAst(n.children[0], ctx)
 	right := modifyAst(n.children[1], ctx)
 
-	if operator == "===" {
+	if operator == "===" || operator == "==" {
 		if left.t == right.t {
-			if left.value == right.value {
+			if printAst(left) == printAst(right) {
 				return makeNode(n_BOOL_LITERAL, "true")
 			}
 			return makeNode(n_BOOL_LITERAL, "false")
@@ -139,7 +139,7 @@ func modifyMemberExpression(n ast, ctx *context) ast {
 			innerProp.value == "env" {
 
 			if envVal, ok := ctx.env[prop.value]; ok {
-				return makeNode(n_STRING_LITERAL, "'"+envVal+"'")
+				return makeNode(n_STRING_LITERAL, envVal)
 			}
 		}
 	}
@@ -256,7 +256,6 @@ func getImport(resolvedPath, eType, name string) ast {
 	moduleName := CreateVarNameFromPath(resolvedPath)
 
 	funcName := eType
-	varName := "'" + name + "'"
 
 	args := []ast{
 		makeNode(
@@ -267,7 +266,7 @@ func getImport(resolvedPath, eType, name string) ast {
 	}
 
 	if name != "" {
-		args = append(args, makeNode(n_IDENTIFIER, varName))
+		args = append(args, makeNode(n_STRING_LITERAL, name))
 	}
 
 	return makeNode(
@@ -449,7 +448,6 @@ func makeToken(text string) token {
 }
 
 func resolveES6ImportPath(importPath, currentFileName string) string {
-	importPath = trimQuotesFromString(importPath)
 	pathParts := strings.Split(importPath, "/")
 
 	locationParts := strings.Split(currentFileName, "/")

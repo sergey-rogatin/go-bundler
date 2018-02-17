@@ -331,7 +331,7 @@ func importStatement(p *parser) ast {
 
 	var vars, all, path ast
 	all.t = n_IMPORT_ALL
-	path.t = n_IMPORT_PATH
+	path.t = n_STRING_LITERAL
 
 	if p.acceptT(tMULT) {
 		p.skipT()
@@ -411,7 +411,9 @@ func importStatement(p *parser) ast {
 	}
 
 	p.expectT(tSTRING)
-	path.value = p.getLexeme()
+	val := p.getLexeme()
+	val = val[1 : len(val)-1]
+	path.value = val
 	p.expectT(tSEMI)
 
 	return makeNode(n_IMPORT_STATEMENT, "", vars, all, path)
@@ -700,9 +702,11 @@ func functionCallOrMemberExpression(p *parser) ast {
 
 			if property.t == n_EMPTY {
 				if p.acceptT(tTEMPLATE_LITERAL) {
+					val := p.getLexeme()
+					val = val[1 : len(val)-1]
 					return makeNode(
 						n_TAGGED_LITERAL, "", funcName,
-						makeNode(n_TEMPLATE_LITERAL, p.getLexeme()),
+						makeNode(n_TEMPLATE_LITERAL, val),
 					)
 				}
 				return funcName
@@ -905,8 +909,10 @@ func objectLiteral(p *parser) ast {
 
 func otherLiteral(p *parser) ast {
 	if p.acceptT(tSTRING) {
-		return makeNode(n_STRING_LITERAL, p.getLexeme())
-	} else if p.acceptT(tNUMBER, tHEX) {
+		lexeme := p.getLexeme()
+		value := lexeme[1 : len(lexeme)-1]
+		return makeNode(n_STRING_LITERAL, value)
+	} else if p.acceptT(tNUMBER) {
 		return makeNode(n_NUMBER_LITERAL, p.getLexeme())
 	} else if p.acceptT(tTRUE, tFALSE) {
 		return makeNode(n_BOOL_LITERAL, p.getLexeme())
@@ -915,7 +921,9 @@ func otherLiteral(p *parser) ast {
 	} else if p.acceptT(tUNDEFINED) {
 		return makeNode(n_UNDEFINED, p.getLexeme())
 	} else if p.acceptT(tTEMPLATE_LITERAL) {
-		return makeNode(n_TEMPLATE_LITERAL, p.getLexeme())
+		lexeme := p.getLexeme()
+		value := lexeme[1 : len(lexeme)-1]
+		return makeNode(n_TEMPLATE_LITERAL, value)
 	}
 	return INVALID_NODE
 }
@@ -1273,7 +1281,7 @@ func exportStatement(p *parser) ast {
 	var vars, declaration, path ast
 	vars.t = n_EXPORT_VARS
 	declaration.t = n_EXPORT_DECLARATION
-	path.t = n_EXPORT_PATH
+	path.t = n_STRING_LITERAL
 
 	if p.acceptT(tDEFAULT) {
 		var name, alias ast
@@ -1329,7 +1337,9 @@ func exportStatement(p *parser) ast {
 
 		if p.acceptT(tNAME) && p.getLexeme() == "from" {
 			p.expectT(tSTRING)
-			path = makeNode(n_EXPORT_PATH, p.getLexeme())
+			val := p.getLexeme()
+			val = val[1 : len(val)-1]
+			path = makeNode(n_STRING_LITERAL, val)
 		}
 		p.expectT(tSEMI)
 
@@ -1365,7 +1375,9 @@ func exportStatement(p *parser) ast {
 			return INVALID_NODE
 		}
 		p.expectT(tSTRING)
-		path = makeNode(n_EXPORT_PATH, p.getLexeme())
+		val := p.getLexeme()
+		val = val[1 : len(val)-1]
+		path = makeNode(n_STRING_LITERAL, val)
 		vars.t = n_EXPORT_ALL
 		p.expectT(tSEMI)
 	}

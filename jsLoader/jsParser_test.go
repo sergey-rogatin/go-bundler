@@ -21,6 +21,18 @@ func TestExpressions(t *testing.T) {
 		exp string
 	}{
 		{
+			"0o12345;",
+			"0o12345;",
+		},
+		{
+			"0b000100;",
+			"0b000100;",
+		},
+		{
+			"0x312abcdef;",
+			"0x312abcdef;",
+		},
+		{
 			"of=foo;",
 			"of=foo;",
 		},

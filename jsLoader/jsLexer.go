@@ -99,11 +99,27 @@ func lex(src []byte) []token {
 	for i < len(src) {
 		switch {
 
-		case substr(i, i+2) == "0x":
-			eat(tHEX)
-			eat(tHEX)
+		case c == '0' && (src[i+1] == 'o' || src[i+1] == 'O'):
+			eat(tNUMBER)
+			eat(tNUMBER)
+			for isNumber(c) {
+				eat(tNUMBER)
+			}
+			end()
+
+		case c == '0' && (src[i+1] == 'b' || src[i+1] == 'B'):
+			eat(tNUMBER)
+			eat(tNUMBER)
+			for isNumber(c) {
+				eat(tNUMBER)
+			}
+			end()
+
+		case c == '0' && (src[i+1] == 'x' || src[i+1] == 'X'):
+			eat(tNUMBER)
+			eat(tNUMBER)
 			for isHexadecimal(c) {
-				eat(tHEX)
+				eat(tNUMBER)
 			}
 			end()
 
