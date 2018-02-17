@@ -17,6 +17,9 @@ func printAst(n ast) string {
 	case n_STRING_LITERAL:
 		return "'" + n.value + "'"
 
+	case n_DOUBLE_QUOTE_STRING_LITERAL:
+		return "\"" + n.value + "\""
+
 	case n_TEMPLATE_LITERAL:
 		return "`" + n.value + "`"
 

@@ -117,12 +117,7 @@ func modifyBinaryExpression(n ast, ctx *context) ast {
 		}
 	}
 
-	res := n
-	res.children = []ast{}
-	for _, c := range n.children {
-		res.children = append(res.children, modifyAst(c, ctx))
-	}
-	return res
+	return makeNode(n_BINARY_EXPRESSION, operator, left, right)
 }
 
 func modifyMemberExpression(n ast, ctx *context) ast {
@@ -431,6 +426,7 @@ func transformIntoModule(src ast, fileName string, env map[string]string) (ast, 
 	ctx.env = env
 
 	res := modifyAst(src, &ctx)
+	// res := src
 
 	return res, ctx.fileImports
 }

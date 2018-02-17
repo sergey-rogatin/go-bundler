@@ -53,53 +53,56 @@ type parser struct {
 	tokens []token
 	i      int
 
-	node      ast
-	flags     int
-	lastIndex int
+	node  ast
+	flags int
 }
 
 func (p *parser) testFlag(f int) bool {
 	return (p.flags & f) != 0
 }
 
-func (p *parser) getNext() token {
+func (p *parser) skip(skipNewline bool) int {
 	i := p.i
-	for p.tokens[i].tType == tSPACE ||
-		p.tokens[i].tType == tNEWLINE {
-		i++
+	for {
+
+		if p.tokens[i].tType == tEND_OF_INPUT {
+			break
+		} else if p.tokens[i].tType == tNEWLINE && skipNewline {
+			i++
+		} else if p.tokens[i].tType == tSPACE {
+			i++
+		} else if p.tokens[i].tType == tDIV && p.tokens[i+1].tType == tDIV {
+			for p.tokens[i].tType != tNEWLINE && p.tokens[i].tType != tEND_OF_INPUT {
+				i++
+			}
+		} else if p.tokens[i].tType == tDIV &&
+			(p.tokens[i+1].tType == tMULT || p.tokens[i+1].tType == tEXP) {
+			i += 2
+			for !((p.tokens[i].tType == tMULT || p.tokens[i+1].tType == tEXP) &&
+				p.tokens[i+1].tType == tDIV) {
+				i++
+			}
+			i += 2
+		} else {
+			break
+		}
 	}
+
+	return i
+}
+
+func (p *parser) getNextT() token {
+	i := p.skip(true)
 	return p.tokens[i]
 }
 
 func (p *parser) skipT() {
-	for p.tokens[p.i].tType == tSPACE ||
-		p.tokens[p.i].tType == tNEWLINE {
-		p.i++
-	}
+	p.i = p.skip(true)
 	p.i++
-	// p.lastToken = p.tokens[p.i]
-}
-
-func (p *parser) expectT(tTypes ...tokenType) {
-	if !p.acceptT(tTypes...) {
-		i := p.i
-		for p.tokens[i].tType == tSPACE ||
-			p.tokens[i].tType == tNEWLINE {
-			i++
-		}
-		p.lastIndex = i
-		p.checkASI(tTypes...)
-	}
 }
 
 func (p *parser) acceptT(tTypes ...tokenType) bool {
-	i := p.i
-	for p.tokens[i].tType == tSPACE ||
-		p.tokens[i].tType == tNEWLINE {
-		i++
-	}
-
-	tok := p.tokens[i]
+	tok := p.getNextT()
 
 	for _, tType := range tTypes {
 		if tok.tType == tType {
@@ -109,6 +112,30 @@ func (p *parser) acceptT(tTypes ...tokenType) bool {
 	}
 
 	return false
+}
+
+func (p *parser) checkASI(tTypes ...tokenType) {
+	i := p.skip(false)
+
+	for _, tType := range tTypes {
+		if tType == tSEMI {
+			if p.tokens[i].tType == tNEWLINE ||
+				p.tokens[i].tType == tCURLY_RIGHT {
+				return
+			}
+			if p.tokens[i].tType == tEND_OF_INPUT {
+				return
+			}
+		}
+	}
+
+	panic(&parsingError{p.tokens[p.i]})
+}
+
+func (p *parser) expectT(tTypes ...tokenType) {
+	if !p.acceptT(tTypes...) {
+		p.checkASI(tTypes...)
+	}
 }
 
 type parseFunc func(*parser) ast
@@ -125,6 +152,12 @@ func (p *parser) acceptF(f parseFunc) bool {
 	p.node = n
 	return true
 }
+func (p *parser) expectF(f parseFunc) ast {
+	if !p.acceptF(f) {
+		p.checkASI(tSEMI)
+	}
+	return p.getNode()
+}
 
 func (p *parser) getNode() ast {
 	return p.node
@@ -132,35 +165,6 @@ func (p *parser) getNode() ast {
 
 func (p *parser) getLexeme() string {
 	return p.tokens[p.i-1].lexeme
-}
-
-func (p *parser) expectF(f parseFunc) ast {
-	if !p.acceptF(f) {
-		p.lastIndex = p.i
-		p.checkASI(tSEMI)
-	}
-	return p.getNode()
-}
-
-func (p *parser) checkASI(tTypes ...tokenType) {
-	i := p.i
-	for p.tokens[i].tType == tSPACE {
-		i++
-	}
-
-	for _, tType := range tTypes {
-		if tType == tSEMI {
-			if p.tokens[i].tType == tNEWLINE ||
-				p.tokens[i].tType == tCURLY_RIGHT {
-				return
-			}
-			if p.tokens[i].tType == tEND_OF_INPUT {
-				return
-			}
-		}
-	}
-
-	panic(&parsingError{p.tokens[p.lastIndex]})
 }
 
 type parsingError struct {
@@ -267,9 +271,9 @@ func switchCase(p *parser) ast {
 
 	p.expectT(tCOLON)
 
-	for !(p.getNext().tType == tCASE ||
-		p.getNext().tType == tDEFAULT ||
-		p.getNext().tType == tCURLY_RIGHT) {
+	for !(p.getNextT().tType == tCASE ||
+		p.getNextT().tType == tDEFAULT ||
+		p.getNextT().tType == tCURLY_RIGHT) {
 		statements = append(statements, p.expectF(statement))
 	}
 
@@ -516,7 +520,7 @@ func assignmentExpression(p *parser) ast {
 
 			var expr ast
 
-			if p.getNext().tType != tSEMI {
+			if p.getNextT().tType != tSEMI {
 				expr = p.expectF(assignmentExpression)
 			}
 
@@ -600,7 +604,7 @@ func binaryExpression(p *parser) ast {
 			outputStack, expr,
 		)
 
-		op, ok := operatorTable[p.getNext().tType]
+		op, ok := operatorTable[p.getNextT().tType]
 		if !ok {
 			break
 		}
@@ -621,7 +625,7 @@ func binaryExpression(p *parser) ast {
 				break
 			}
 		}
-		opStack = append(opStack, p.getNext())
+		opStack = append(opStack, p.getNextT())
 		p.skipT()
 	}
 
@@ -755,8 +759,7 @@ func constructorCall(p *parser) ast {
 }
 
 func atom(p *parser) ast {
-	if p.acceptF(comment) ||
-		p.acceptF(classExpression) ||
+	if p.acceptF(classExpression) ||
 		p.acceptF(objectLiteral) ||
 		p.acceptF(otherLiteral) ||
 		p.acceptF(lambdaExpression) ||
@@ -768,27 +771,6 @@ func atom(p *parser) ast {
 		return p.getNode()
 	}
 
-	return INVALID_NODE
-}
-
-func comment(p *parser) ast {
-	if p.acceptT(tLINE_COMMENT_START) {
-		value := ""
-		for p.i < len(p.tokens)-1 && p.tokens[p.i].tType != tNEWLINE {
-			value += p.tokens[p.i].lexeme
-			p.i++
-		}
-		//return makeNode(n_LINE_COMMENT, value)
-	}
-	if p.acceptT(tBLOCK_COMMENT_START) {
-		value := ""
-		for p.tokens[p.i].tType != tBLOCK_COMMENT_END {
-			value += p.tokens[p.i].lexeme
-			p.i++
-		}
-		p.i++
-		//return makeNode(n_BLOCK_COMMENT, value)
-	}
 	return INVALID_NODE
 }
 
@@ -831,12 +813,18 @@ func regexpLiteral(p *parser) ast {
 
 	bodyValue := ""
 	for {
-		if p.getNext().tType == tDIV && p.tokens[p.i-1].tType != tESCAPE {
-			p.skipT()
+		if p.tokens[p.i].tType == tESCAPE {
+			bodyValue += p.tokens[p.i].lexeme
+			bodyValue += p.tokens[p.i+1].lexeme
+			p.i += 2
+			continue
+		}
+		if p.tokens[p.i].tType == tDIV {
+			p.i++
 			break
 		}
-		p.skipT()
-		bodyValue += p.getLexeme()
+		bodyValue += p.tokens[p.i].lexeme
+		p.i++
 	}
 
 	body = makeNode(n_REGEXP_BODY, bodyValue)
@@ -887,13 +875,13 @@ func objectProperty(p *parser) ast {
 
 	key = p.expectF(propertyKey)
 	if key.value == "set" || key.value == "get" {
-		if p.getNext().tType != tCOLON && p.getNext().tType != tPAREN_LEFT {
+		if p.getNextT().tType != tCOLON && p.getNextT().tType != tPAREN_LEFT {
 			kind = key.value
 			key = p.expectF(propertyKey)
 		}
 	}
 
-	if p.getNext().tType == tPAREN_LEFT {
+	if p.getNextT().tType == tPAREN_LEFT {
 		params := p.expectF(functionParameters)
 		body := p.expectF(blockStatement)
 		return makeNode(n_OBJECT_METHOD, kind, key, params, body)
@@ -930,14 +918,25 @@ func stringLiteral(p *parser) ast {
 	}
 	firstQuote := p.getLexeme()
 	value := ""
-	for !(p.tokens[p.i].lexeme == firstQuote &&
-		p.tokens[p.i-1].tType != tESCAPE) {
+	for {
+		if p.tokens[p.i].tType == tESCAPE {
+			value += p.tokens[p.i].lexeme
+			value += p.tokens[p.i+1].lexeme
+			p.i += 2
+			continue
+		}
+		if p.tokens[p.i].lexeme == firstQuote {
+			break
+		}
 		value += p.tokens[p.i].lexeme
 		p.i++
 	}
 	p.i++
 
-	return makeNode(n_STRING_LITERAL, value)
+	if firstQuote == "'" {
+		return makeNode(n_STRING_LITERAL, value)
+	}
+	return makeNode(n_DOUBLE_QUOTE_STRING_LITERAL, value)
 }
 
 func templateLiteral(p *parser) ast {
@@ -946,8 +945,16 @@ func templateLiteral(p *parser) ast {
 	}
 	firstQuote := p.getLexeme()
 	value := ""
-	for !(p.tokens[p.i].lexeme == firstQuote &&
-		p.tokens[p.i-1].tType != tESCAPE) {
+	for {
+		if p.tokens[p.i].tType == tESCAPE {
+			value += p.tokens[p.i].lexeme
+			value += p.tokens[p.i+1].lexeme
+			p.i += 2
+			continue
+		}
+		if p.tokens[p.i].lexeme == firstQuote {
+			break
+		}
 		value += p.tokens[p.i].lexeme
 		p.i++
 	}
@@ -996,7 +1003,7 @@ func arrayPattern(p *parser) ast {
 
 		if p.acceptF(assignmentPattern) {
 			items = append(items, p.getNode())
-		} else if p.getNext().tType == tCOMMA {
+		} else if p.getNextT().tType == tCOMMA {
 			items = append(items, makeNode(n_EMPTY, ""))
 		} else {
 			return INVALID_NODE
@@ -1083,7 +1090,7 @@ func propertyKey(p *parser) ast {
 		return makeNode(n_NON_IDENTIFIER_OBJECT_KEY, "", p.getNode())
 	}
 
-	if isValidPropertyName(p.getNext().lexeme) {
+	if isValidPropertyName(p.getNextT().lexeme) {
 		p.skipT()
 		return makeNode(n_NON_IDENTIFIER_OBJECT_KEY, "", makeNode(n_IDENTIFIER, p.getLexeme()))
 	}
@@ -1446,7 +1453,7 @@ func classBody(p *parser) ast {
 			key = p.expectF(propertyKey)
 		}
 
-		if p.getNext().tType == tPAREN_LEFT {
+		if p.getNextT().tType == tPAREN_LEFT {
 			params := p.expectF(functionParameters)
 			body := p.expectF(blockStatement)
 			prop = makeNode(n_CLASS_METHOD, kind, key, params, body)

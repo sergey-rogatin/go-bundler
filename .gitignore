@@ -5,3 +5,7 @@ config.json
 debug
 .go-bundler-cache
 build
+cpu.out
+debug.test
+file_test.go
+go-bundler.test.exe

@@ -168,21 +168,6 @@ func lex(src []byte) []token {
 			eat(tSPACE)
 			end()
 
-		case substr(i, i+2) == "//":
-			eat(tLINE_COMMENT_START)
-			eat(tLINE_COMMENT_START)
-			end()
-
-		case substr(i, i+2) == "/*":
-			eat(tBLOCK_COMMENT_START)
-			eat(tBLOCK_COMMENT_START)
-			end()
-
-		case substr(i, i+2) == "*/":
-			eat(tBLOCK_COMMENT_END)
-			eat(tBLOCK_COMMENT_END)
-			end()
-
 		default:
 			fourOp := substr(i, i+4)
 			threeOp := substr(i, i+3)

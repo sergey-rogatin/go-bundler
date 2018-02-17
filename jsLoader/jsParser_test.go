@@ -1029,23 +1029,23 @@ func TestComments(t *testing.T) {
 		exp string
 	}{
 		{
-			"console.log(ReactDOM",
-			"",
+			`/**
+			* @license
+			* Lodash <https://lodash.com/>
+			* Copyright JS Foundation and other contributors <https://js.foundation/>
+			* Released under MIT license <https://lodash.com/license>
+			* Based on Underscore.js 1.8.3 <http://underscorejs.org/LICENSE>
+			* Copyright Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+			*/foo;`,
+			"foo;",
 		},
 		{
-			"//foo",
-			"",
+			"foo// import React from 'react';",
+			"foo;",
 		},
 		{
-			`/** @license React v16.2.0
-		* react.development.js
-		*
-		* Copyright (c) 2013-present, Facebook, Inc.
-		*
-		* This source code is licensed under the MIT license found in the
-		* LICENSE file in the root directory of this source tree.
-		*/`,
-			"",
+			"foo/* import React from 'react' */;",
+			"foo;",
 		},
 	}
 
@@ -1123,6 +1123,32 @@ func TestWithStatement(t *testing.T) {
 		{
 			"with(foo){}",
 			"with(foo){}",
+		},
+	}
+
+	for _, c := range cases {
+		setParser(c.src)
+		le := program(&ps)
+
+		res := printAst(le)
+		if res != c.exp {
+			fmt.Println([]byte(res))
+			fmt.Println([]byte(c.exp))
+			t.Errorf("%v", le)
+			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
+		}
+	}
+}
+
+func TestRegexp(t *testing.T) {
+	cases := []struct {
+		src string
+		exp string
+	}{
+		{
+			`reWrapDetails = /\{\n\/\* \[wrapped with (.+)\] \*/,
+				reSplitDetails = /,? & /;`,
+			`reWrapDetails=/\{\n\/\* \[wrapped with (.+)\] \*/,reSplitDetails=/,? & /;`,
 		},
 	}
 

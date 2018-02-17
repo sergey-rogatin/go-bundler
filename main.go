@@ -138,9 +138,9 @@ func main() {
 	config := configJSON{}
 
 	configFileName := "config.json"
-	if len(os.Args) > 1 {
-		configFileName = os.Args[1]
-	}
+	// if len(os.Args) > 1 {
+	// 	configFileName = os.Args[1]
+	// }
 
 	configFile, err := ioutil.ReadFile(configFileName)
 	if err != nil {
