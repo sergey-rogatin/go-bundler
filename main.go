@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -16,32 +15,15 @@ import (
 
 	"github.com/lvl5hm/go-bundler/jsLoader"
 	"github.com/lvl5hm/go-bundler/urlLoader"
+	"github.com/lvl5hm/go-bundler/util"
 )
 
-type safeFile struct {
-	file *os.File
-	lock sync.RWMutex
-}
+/* TODO:
+better error handling and printing
+multiple entry points?
+multiple bundles per file type?
 
-func newSafeFile(fileName string) *safeFile {
-	file, err := os.Create(fileName)
-	if err != nil {
-		panic(err)
-	}
-
-	return &safeFile{file, sync.RWMutex{}}
-}
-
-func (sf *safeFile) write(data []byte) {
-	sf.lock.Lock()
-	defer sf.lock.Unlock()
-
-	sf.file.Write(data)
-}
-
-func (sf *safeFile) close() {
-	sf.file.Close()
-}
+*/
 
 type fileCache struct {
 	Data        []byte
@@ -85,7 +67,6 @@ func (c *bundleCache) saveFile() {
 	saveFile, err := os.Create(c.DirName + "/cache")
 	if err != nil {
 		fmt.Println(err)
-		// fmt.Println("Error: cannot create save file for cache!")
 		return
 	}
 	defer saveFile.Close()
@@ -95,7 +76,6 @@ func (c *bundleCache) saveFile() {
 	if err != nil {
 		fmt.Println("Error: cannot save cache to file!")
 	}
-	// fmt.Printf(">>Cache saved to %s\n", c.SaveFileName)
 }
 
 func (c *bundleCache) loadFile() {
@@ -138,13 +118,13 @@ func main() {
 	config := configJSON{}
 
 	configFileName := "config.json"
-	// if len(os.Args) > 1 {
-	// 	configFileName = os.Args[1]
-	// }
+	if len(os.Args) > 1 {
+		configFileName = os.Args[1]
+	}
 
 	configFile, err := ioutil.ReadFile(configFileName)
 	if err != nil {
-		cprintf(c_YELLOW, ">>Warning: Unable to load config file!\n")
+		util.Cprintf(util.C_YELLOW, "Warning: Unable to load config file!\n")
 	} else {
 		json.Unmarshal(configFile, &config)
 	}
@@ -187,7 +167,7 @@ func main() {
 		if config.WatchFiles {
 			go watchBundledFiles(cache, config.Entry, bundleName, &config)
 		}
-		fmt.Printf("Dev server listening at port %v\n", config.DevServer.Port)
+		util.Cprintf(util.C_GREEN, "Dev server listening at port %v\n", config.DevServer.Port)
 		server := http.FileServer(http.Dir(config.BundleDir))
 		err := http.ListenAndServe(fmt.Sprintf(":%v", config.DevServer.Port), server)
 		log.Fatal(err)
@@ -196,27 +176,12 @@ func main() {
 	}
 }
 
-func indexOf(arr []string, str string) int {
-	for i, item := range arr {
-		if item == str {
-			return i
-		}
-	}
-	return -1
-}
-
-func clearScreen() {
-	cmd := exec.Command("cmd", "/c", "cls")
-	cmd.Stdout = os.Stdout
-	cmd.Run()
-}
-
 func createBundle(entryFileName, bundleFileName string, cache *bundleCache, config *configJSON) {
 	startTime := time.Now()
 	os.MkdirAll(filepath.Dir(bundleFileName), 0666)
 	os.Remove(bundleFileName)
-	sf := newSafeFile(bundleFileName)
-	defer sf.close()
+	sf := util.NewSafeFile(bundleFileName)
+	defer sf.Close()
 
 	// mark all files as unreachable at the start of the build
 	// so the autorebuilder does not try to rebuild when they change
@@ -225,15 +190,19 @@ func createBundle(entryFileName, bundleFileName string, cache *bundleCache, conf
 		cache.Files[fileName] = file
 	}
 
-	sf.write([]byte(getJsBundleFileHead()))
+	sf.Write(jsLoader.GetJsBundleFileHead())
 	err := addFilesToBundle([]string{entryFileName}, sf, cache, config)
 
-	tail, warnings := getJsBundleFileTail(entryFileName, cache)
-	sf.write(tail)
+	importsMap := map[string][]string{}
+	for path, file := range cache.Files {
+		importsMap[path] = file.Imports
+	}
+	tail, warnings := jsLoader.GetJsBundleFileTail(entryFileName, importsMap)
+	sf.Write(tail)
 	buildTime := time.Since(startTime)
 
 	if config.WatchFiles {
-		clearScreen()
+		util.ClearScreen()
 	}
 
 	if err == nil {
@@ -241,80 +210,24 @@ func createBundle(entryFileName, bundleFileName string, cache *bundleCache, conf
 			cacheSaveStart := time.Now()
 			cache.saveFile()
 			cacheSaveTime := time.Since(cacheSaveStart)
-			cprintf(c_GREEN, ">>Cache saved to %s in %s\n", config.PermanentCache.DirName, cacheSaveTime)
+			util.Cprintf(util.C_GREEN, "Cache saved to %s in %s\n", config.PermanentCache.DirName, cacheSaveTime)
 		}
 
 		if len(warnings) > 0 {
-			fmt.Println()
-			cprintf(c_YELLOW, "%s\n", strings.Join(warnings, "\n"))
+			for _, w := range warnings {
+				util.Cprintf(util.C_YELLOW, "%s", w)
+			}
 		}
-		cprintf(c_GREEN, ">>Build finished in %s\n", buildTime)
+		util.Cprintf(util.C_GREEN, "Build finished in %s\n", buildTime)
 	} else {
-		cprintf(c_RED, ">>%s\n", err)
+		util.Cprintf(util.C_RED, "%s\n", err)
 		return
 	}
 }
 
-func getJsBundleFileHead() string {
-	start := `function requireES6(module, impName) {
-		if (module.hasES6Exports) {
-			if (impName === '*') {
-				return module.es6;
-			}
-			return module.es6[impName];
-		}
-		if (impName == '*' || impName === 'default') {
-			return module.exports;
-		}
-		return module.exports[impName];
-	}
-	
-	function require(module) {
-		if (module.hasES6Exports) {
-			return module.es6;
-		}
-		return module.exports;
-	}
-	var moduleFns={},modules={};
-	var process={env:{}};`
-	return start
-}
-
-func getJsBundleFileTail(entryFileName string, cache *bundleCache) ([]byte, []string) {
-	moduleOrder := []string{}
-	warnings := []string{}
-
-	var createImportTree func(string, []string)
-	createImportTree = func(fileName string, path []string) {
-		if i := indexOf(path, fileName); i >= 0 {
-			warnings = append(warnings, fmt.Sprintf(
-				">>Warning: circular dependency detected:\n%s\n",
-				strings.Join(append(path[i:], fileName), " -> "),
-			))
-			return
-		}
-
-		file := cache.Files[fileName]
-		for _, importPath := range file.Imports {
-			createImportTree(importPath, append(path, fileName))
-		}
-
-		moduleName := "'" + jsLoader.CreateVarNameFromPath(fileName) + "'"
-		if indexOf(moduleOrder, moduleName) < 0 {
-			moduleOrder = append(moduleOrder, moduleName)
-		}
-	}
-
-	createImportTree(entryFileName, []string{})
-	jsModuleOrder := fmt.Sprintf("var moduleOrder = [%s];", strings.Join(moduleOrder, ","))
-	result := []byte(jsModuleOrder + "moduleOrder.forEach((moduleName)=>modules[moduleName]=moduleFns[moduleName]())")
-
-	return result, warnings
-}
-
 func addFilesToBundle(
 	files []string,
-	bundleSf *safeFile,
+	bundleSf *util.SafeFile,
 	cache *bundleCache,
 	config *configJSON,
 ) error {
@@ -324,41 +237,45 @@ func addFilesToBundle(
 		go addFileToBundle(unbundledFile, bundleSf, errorCh, cache, config)
 	}
 
+	errs := []error{}
 	for counter := 0; counter < len(files); counter++ {
 		err := <-errorCh
 		if err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
 
-	return nil
+	if len(errs) == 0 {
+		return nil
+	}
+	return multiError{errs}
 }
 
-type fileError struct {
-	err  string
-	path string
+type loaderError struct {
+	fileName string
+	err      error
 }
 
-func (fe fileError) Error() string {
-	return "Error: " + fe.err + " '" + fe.path + "'"
+func (l loaderError) Error() string {
+	return fmt.Sprintf("Error loading file %s:\n%s", l.fileName, l.err)
 }
 
 func addFileToBundle(
 	fileName string,
-	bundleSf *safeFile,
+	bundleSf *util.SafeFile,
 	errorCh chan error,
 	cache *bundleCache,
 	config *configJSON,
 ) {
-	var data []byte
-	var fileImports []string
-
 	fileStats, err := os.Stat(fileName)
 	if err != nil {
-		errorCh <- fileError{"cannot find file", fileName}
+		errorCh <- loaderError{fileName, fmt.Errorf("Cannot find file")}
 		return
 	}
-	lastModTime := fileStats.ModTime()
+
+	var data []byte
+	var fileImports []string
+	var lastModTime = fileStats.ModTime()
 
 	saveCache := func() {
 		cache.write(fileName, fileCache{
@@ -389,32 +306,38 @@ func addFileToBundle(
 
 		switch ext {
 		case ".js":
-			src, err := ioutil.ReadFile(fileName)
-			if err != nil {
-				saveCache()
-				errorCh <- err
-				return
-			}
-
-			data, fileImports, err = jsLoader.LoadFile(src, fileName, config.Env)
-			if err != nil {
-				saveCache()
-				errorCh <- err
-				return
-			}
+			data, fileImports, err = jsLoader.LoadFile(fileName, config.Env)
 
 		default:
-			bundleDir := filepath.Dir(bundleSf.file.Name())
-			data, fileImports, err = urlLoader.LoadFile(fileName, bundleDir)
+			data, fileImports, err = urlLoader.LoadFile(fileName, config.BundleDir)
+		}
+
+		if err != nil {
+			saveCache()
+			errorCh <- loaderError{fileName, err}
+			return
 		}
 	}
 
-	bundleSf.write(data)
-
+	bundleSf.Write(data)
 	saveCache()
-	err = addFilesToBundle(fileImports, bundleSf, cache, config)
+	multiErr := addFilesToBundle(fileImports, bundleSf, cache, config)
+	errorCh <- multiErr
+}
 
-	errorCh <- err
+type multiError struct {
+	errs []error
+}
+
+func (me multiError) Error() string {
+	res := ""
+	for i, e := range me.errs {
+		res += e.Error()
+		if i < len(me.errs)-1 {
+			res += "\n"
+		}
+	}
+	return res
 }
 
 func bundleHTMLTemplate(templateName, bundleName string) {

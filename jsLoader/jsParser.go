@@ -130,11 +130,12 @@ func (p *parser) checkASI(tTypes ...tokenType) {
 		}
 	}
 
-	panic(&parsingError{p.tokens[p.i]})
+	panic(&parsingError{p.i, p.tokens})
 }
 
 func (p *parser) expectT(tTypes ...tokenType) {
 	if !p.acceptT(tTypes...) {
+		p.i = p.skip(false)
 		p.checkASI(tTypes...)
 	}
 }
@@ -169,11 +170,38 @@ func (p *parser) getLexeme() string {
 }
 
 type parsingError struct {
-	t token
+	index  int
+	tokens []token
 }
 
 func (pe *parsingError) Error() string {
-	return fmt.Sprintf("Unexpected token %v at %v:%v", pe.t.lexeme, pe.t.line, pe.t.column)
+	tok := pe.tokens[pe.index]
+
+	start := pe.index
+	for start > 0 && pe.tokens[start-1].tType != tNEWLINE {
+		start--
+	}
+
+	end := pe.index
+	for end < len(pe.tokens)-1 && pe.tokens[end].tType != tNEWLINE {
+		end++
+	}
+
+	resLine0 := fmt.Sprintf("Unexpected token '%s' at %v:%v\n", tok.lexeme, tok.line, tok.column)
+	resStart := fmt.Sprintf("%04d", tok.line) + " "
+	resLine1 := resStart
+	for i := start; i < end; i++ {
+		resLine1 += pe.tokens[i].lexeme
+	}
+	resLine1 += "\n"
+
+	resLine2 := ""
+	for i := 0; i <= tok.column+len(resStart); i++ {
+		resLine1 += " "
+	}
+	resLine2 += "^"
+
+	return resLine0 + resLine1 + resLine2
 }
 
 func parseTokens(tokens []token) (res ast, err *parsingError) {

@@ -6,70 +6,116 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"strings"
+
+	"github.com/lvl5hm/go-bundler/util"
 )
-
-type LoaderError struct {
-	err      string
-	fileName string
-}
-
-func (le LoaderError) Error() string {
-	return fmt.Sprintf("Error loading file %s:\n%s", le.fileName, le.err)
-}
-
-func getNiceError(pe *parsingError, src []byte) string {
-	fmt.Println(pe)
-	if pe.t.charIndex > len(src)-1 {
-		pe.t.charIndex = len(src) - 1
-	}
-
-	start := pe.t.charIndex
-	for start > 0 && src[start] != '\n' {
-		start--
-	}
-
-	end := pe.t.charIndex
-	for end < len(src)-1 && src[end] != '\n' {
-		end++
-	}
-
-	resLine0 := fmt.Sprintf("Unexpected token '%s' at %v:%v\n", pe.t.lexeme, pe.t.line, pe.t.column)
-	resStart := fmt.Sprintf("%04d", pe.t.line) + " "
-	resLine1 := resStart + string(src[start:end]) + "\n"
-	resLine2 := ""
-	for i := 0; i <= pe.t.column+len(resStart); i++ {
-		resLine1 += " "
-	}
-	resLine2 += "^"
-
-	return resLine0 + resLine1 + resLine2
-}
-
-func LoadFile(src []byte, filePath string, env map[string]string) ([]byte, []string, error) {
-	tokens := lex(src)
-	initialProgram, parseErr := parseTokens(tokens)
-	if parseErr != nil {
-		loaderErr := LoaderError{}
-
-		loaderErr.err = getNiceError(parseErr, src)
-		loaderErr.fileName = filePath
-
-		return nil, nil, loaderErr
-	}
-
-	resultProgram, fileImports := transformIntoModule(initialProgram, filePath, env)
-	resultBytes := []byte(printAst(resultProgram))
-	return resultBytes, fileImports, nil
-}
-
-type importedVar struct {
-}
 
 type context struct {
 	fileName      string
 	fileImports   []string
 	hasES6Exports bool
 	env           map[string]string
+}
+
+func LoadFile(fileName string, env map[string]string) ([]byte, []string, error) {
+	src, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	tokens := lex(src)
+	initialProgram, parseErr := parseTokens(tokens)
+	if parseErr != nil {
+		return nil, nil, parseErr
+	}
+
+	resultProgram, fileImports := transformIntoModule(initialProgram, fileName, env)
+	resultBytes := []byte(printAst(resultProgram))
+	return resultBytes, fileImports, nil
+}
+
+func ParseAndPrint(src []byte) ([]byte, error) {
+	tokens := lex(src)
+	initialProgram, parseErr := parseTokens(tokens)
+	if parseErr != nil {
+		return nil, parseErr
+	}
+	resultBytes := []byte(printAst(initialProgram))
+
+	return resultBytes, parseErr
+}
+
+func GetJsBundleFileHead() []byte {
+	start := `function requireES6(module, impName) {
+		if (module.hasES6Exports) {
+			if (impName === '*') {
+				return module.es6;
+			}
+			return module.es6[impName];
+		}
+		if (impName == '*' || impName === 'default') {
+			return module.exports;
+		}
+		return module.exports[impName];
+	}
+	
+	function require(module) {
+		if (module.hasES6Exports) {
+			return module.es6;
+		}
+		return module.exports;
+	}
+	var moduleFns={},modules={};
+	var process={env:{}};`
+
+	res, _ := ParseAndPrint([]byte(start))
+	// res := []byte(start)
+	return res
+}
+
+type cyclicDependencyWarning struct {
+	path []string
+}
+
+func (c cyclicDependencyWarning) Error() string {
+	return fmt.Sprintf(
+		"Warning: circular dependency detected:\n%s\n",
+		strings.Join(c.path, " -> "),
+	)
+}
+
+func GetJsBundleFileTail(
+	entryFileName string,
+	importMap map[string][]string,
+) ([]byte, []cyclicDependencyWarning) {
+	moduleOrder := []string{}
+	warnings := []cyclicDependencyWarning{}
+
+	var createImportTree func(string, []string)
+	createImportTree = func(fileName string, path []string) {
+		if i := util.IndexOf(path, fileName); i >= 0 {
+			warnings = append(warnings, cyclicDependencyWarning{append(path[i:], fileName)})
+			return
+		}
+
+		fileImports := importMap[fileName]
+		for _, importPath := range fileImports {
+			createImportTree(importPath, append(path, fileName))
+		}
+
+		moduleName := "'" + CreateVarNameFromPath(fileName) + "'"
+		if util.IndexOf(moduleOrder, moduleName) < 0 {
+			moduleOrder = append(moduleOrder, moduleName)
+		}
+	}
+
+	createImportTree(entryFileName, []string{})
+	jsModuleOrder := fmt.Sprintf("var moduleOrder = [%s];", strings.Join(moduleOrder, ","))
+	tail := []byte(jsModuleOrder + "moduleOrder.forEach((moduleName)=>modules[moduleName]=moduleFns[moduleName]())")
+
+	result, _ := ParseAndPrint(tail)
+	// result := tail
+	return result, warnings
 }
 
 func modifyAst(n ast, ctx *context) ast {
@@ -488,7 +534,7 @@ func resolveES6ImportPath(importPath, currentFileName string) string {
 	if isNode && len(pathParts) == 1 {
 		packageFile, err := ioutil.ReadFile(fullFileName + "/package.json")
 		if err != nil {
-			fmt.Println("Cannot find package.json!")
+			// fmt.Println("Cannot find package.json!")
 			fullFileName += "/" + "index.js"
 		} else {
 			packJSON := packageJSON{}
