@@ -1,7 +1,10 @@
 package jsLoader
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"path/filepath"
 	"strings"
 )
 
@@ -15,6 +18,7 @@ func (le LoaderError) Error() string {
 }
 
 func getNiceError(pe *parsingError, src []byte) string {
+	fmt.Println(pe)
 	if pe.t.charIndex > len(src)-1 {
 		pe.t.charIndex = len(src) - 1
 	}
@@ -23,7 +27,6 @@ func getNiceError(pe *parsingError, src []byte) string {
 	for start > 0 && src[start] != '\n' {
 		start--
 	}
-	start++
 
 	end := pe.t.charIndex
 	for end < len(src)-1 && src[end] != '\n' {
@@ -109,7 +112,7 @@ func modifyBinaryExpression(n ast, ctx *context) ast {
 	right := modifyAst(n.children[1], ctx)
 
 	if operator == "===" || operator == "==" {
-		if left.t == right.t {
+		if left.t == n_STRING_LITERAL && left.t == right.t {
 			if printAst(left) == printAst(right) {
 				return makeNode(n_BOOL_LITERAL, "true")
 			}
@@ -206,6 +209,15 @@ func modifyProgram(n ast, ctx *context) ast {
 							makeNode(n_OBJECT_KEY, "hasES6Exports"),
 							makeNode(n_BOOL_LITERAL, hasES6ExportsStr),
 						),
+					),
+				),
+				makeNode(
+					n_DECLARATOR, "",
+					makeNode(n_IDENTIFIER, "exports"),
+					makeNode(
+						n_MEMBER_EXPRESSION, "",
+						makeNode(n_IDENTIFIER, "module"),
+						makeNode(n_IDENTIFIER, "exports"),
 					),
 				),
 			),
@@ -443,6 +455,10 @@ func makeToken(text string) token {
 	return res[0]
 }
 
+type packageJSON struct {
+	Main string
+}
+
 func resolveES6ImportPath(importPath, currentFileName string) string {
 	pathParts := strings.Split(importPath, "/")
 
@@ -450,12 +466,11 @@ func resolveES6ImportPath(importPath, currentFileName string) string {
 	locationParts = locationParts[:len(locationParts)-1]
 
 	// import from node_modules
+	isNode := false
 	if len(pathParts) > 0 {
 		if pathParts[0] != "." && pathParts[0] != ".." {
 			locationParts = []string{"node_modules"}
-			if len(pathParts) == 1 {
-				pathParts = append(pathParts, "index.js")
-			}
+			isNode = true
 		}
 	}
 
@@ -470,10 +485,27 @@ func resolveES6ImportPath(importPath, currentFileName string) string {
 	}
 
 	fullFileName := strings.Join(append(locationParts, pathParts...), "/")
+	if isNode && len(pathParts) == 1 {
+		packageFile, err := ioutil.ReadFile(fullFileName + "/package.json")
+		if err != nil {
+			fmt.Println("Cannot find package.json!")
+			fullFileName += "/" + "index.js"
+		} else {
+			packJSON := packageJSON{}
+			json.Unmarshal(packageFile, &packJSON)
+			if packJSON.Main != "" {
+				fullFileName += "/" + packJSON.Main
+			} else {
+				fullFileName += "/" + "index.js"
+			}
+		}
+	}
 
-	ext := ""
-	if strings.Index(pathParts[len(pathParts)-1], ".") < 0 {
+	ext := filepath.Ext(fullFileName)
+	if ext == "" {
 		ext = ".js"
+	} else {
+		ext = ""
 	}
 
 	result := fullFileName + ext

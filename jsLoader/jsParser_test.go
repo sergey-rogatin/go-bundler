@@ -21,6 +21,10 @@ func TestExpressions(t *testing.T) {
 		exp string
 	}{
 		{
+			`foo + .953e32;`,
+			"foo+.953e32;",
+		},
+		{
 			"a>>>=b;",
 			"a>>>=b;",
 		},
@@ -688,6 +692,18 @@ func TestReturnStatement(t *testing.T) {
 		exp string
 	}{
 		{
+			"new (Function())();",
+			"new (Function())();",
+		},
+		{
+			"new foo.bar().baz()();",
+			"new foo.bar().baz()();",
+		},
+		{
+			"foo.delete();",
+			"foo.delete();",
+		},
+		{
 			`return {
 				result: mapResult,
 				keyPrefix: keyPrefix,
@@ -1030,6 +1046,18 @@ func TestComments(t *testing.T) {
 	}{
 		{
 			`/**
+
+			*
+			**/foo;`,
+			"foo;",
+		},
+		{
+			`//=====
+			foo;`,
+			"foo;",
+		},
+		{
+			`/**
 			* @license
 			* Lodash <https://lodash.com/>
 			* Copyright JS Foundation and other contributors <https://js.foundation/>
@@ -1051,10 +1079,11 @@ func TestComments(t *testing.T) {
 
 	for _, c := range cases {
 		toks := lex([]byte(c.src))
-		le, _ := parseTokens(toks)
+		le, err := parseTokens(toks)
 
 		res := printAst(le)
 		if res != c.exp {
+			t.Error(err)
 			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
 		}
@@ -1149,6 +1178,10 @@ func TestRegexp(t *testing.T) {
 			`reWrapDetails = /\{\n\/\* \[wrapped with (.+)\] \*/,
 				reSplitDetails = /,? & /;`,
 			`reWrapDetails=/\{\n\/\* \[wrapped with (.+)\] \*/,reSplitDetails=/,? & /;`,
+		},
+		{
+			"/foo[f/f]/;",
+			"/foo[f/f]/;",
 		},
 	}
 

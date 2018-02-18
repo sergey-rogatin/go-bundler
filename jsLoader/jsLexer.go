@@ -30,7 +30,7 @@ func isNumber(c byte) bool {
 }
 
 func isHexadecimal(c byte) bool {
-	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 }
 
 func isLetter(c byte) bool {
@@ -120,6 +120,19 @@ func lex(src []byte) []token {
 			eat(tNUMBER)
 			for isHexadecimal(c) {
 				eat(tNUMBER)
+			}
+			end()
+
+		case c == '.' && isNumber(src[i+1]):
+			eat(tNUMBER)
+			for isNumber(c) {
+				eat(tNUMBER)
+			}
+			if c == 'e' || c == 'E' {
+				eat(tNUMBER)
+				for isNumber(c) {
+					eat(tNUMBER)
+				}
 			}
 			end()
 

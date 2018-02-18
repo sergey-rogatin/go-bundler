@@ -71,14 +71,15 @@ func (p *parser) skip(skipNewline bool) int {
 			i++
 		} else if p.tokens[i].tType == tSPACE {
 			i++
-		} else if p.tokens[i].tType == tDIV && p.tokens[i+1].tType == tDIV {
+		} else if p.tokens[i].tType == tDIV &&
+			(p.tokens[i+1].tType == tDIV || p.tokens[i+1].tType == tDIV_ASSIGN) {
 			for p.tokens[i].tType != tNEWLINE && p.tokens[i].tType != tEND_OF_INPUT {
 				i++
 			}
 		} else if p.tokens[i].tType == tDIV &&
 			(p.tokens[i+1].tType == tMULT || p.tokens[i+1].tType == tEXP) {
 			i += 2
-			for !((p.tokens[i].tType == tMULT || p.tokens[i+1].tType == tEXP) &&
+			for !((p.tokens[i].tType == tMULT || p.tokens[i].tType == tEXP) &&
 				p.tokens[i+1].tType == tDIV) {
 				i++
 			}
@@ -693,7 +694,15 @@ func functionCallOrMemberExpression(p *parser) ast {
 			var property ast
 
 			if p.acceptT(tDOT) {
-				property = p.expectF(identifier)
+				if p.acceptF(identifier) {
+					property = p.getNode()
+				} else {
+					next := p.getNextT()
+					if isValidPropertyName(next.lexeme) {
+						property = makeNode(n_IDENTIFIER, next.lexeme)
+						p.skipT()
+					}
+				}
 			} else if p.acceptT(tBRACKET_LEFT) {
 				property = makeNode(
 					n_CALCULATED_PROPERTY_NAME, "", p.expectF(sequenceExpression),
@@ -741,9 +750,9 @@ func constructorCall(p *parser) ast {
 	if p.acceptT(tNEW) {
 		var name, args ast
 
-		p.flags |= f_ACCEPT_NO_FUNCTION_CALL
+		// p.flags |= f_ACCEPT_NO_FUNCTION_CALL
 		name = p.expectF(functionCallOrMemberExpression)
-		p.flags &= ^f_ACCEPT_NO_FUNCTION_CALL
+		// p.flags &= ^f_ACCEPT_NO_FUNCTION_CALL
 
 		if p.acceptF(functionArgs) {
 			args = p.getNode()
@@ -813,6 +822,15 @@ func regexpLiteral(p *parser) ast {
 
 	bodyValue := ""
 	for {
+		if p.tokens[p.i].tType == tBRACKET_LEFT {
+			for p.tokens[p.i].tType != tBRACKET_RIGHT {
+				bodyValue += p.tokens[p.i].lexeme
+				p.i++
+			}
+			bodyValue += p.tokens[p.i].lexeme
+			p.i++
+			continue
+		}
 		if p.tokens[p.i].tType == tESCAPE {
 			bodyValue += p.tokens[p.i].lexeme
 			bodyValue += p.tokens[p.i+1].lexeme
