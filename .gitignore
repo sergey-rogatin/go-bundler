@@ -6,3 +6,5 @@ package-lock.json
 .bundlecache
 go-bundler-src
 build
+.go-bundler-cache
+file_test.go
