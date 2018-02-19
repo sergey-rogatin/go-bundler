@@ -20,13 +20,16 @@ npm install --save-dev go-bundler
 Save this in your project folder as `config.json`:
 ```json
 {
-  "entry": "test/index.js",
-  "bundleDir": "test/build",
-  "templateHTML": "test/template.html",
+  "entry": "src/index.js",
+  "bundleDir": "build",
+  "templateHTML": "index.html",
   "watchFiles": true,
   "devServer": {
-    "enable": false,
+    "enable": true,
     "port": 8080
+  },
+  "env": {
+    "NODE_ENV": "development"
   },
   "permanentCache": {
     "enable": true,
