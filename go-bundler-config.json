@@ -1,0 +1,17 @@
+{
+  "Entry": "test/src/index.js",
+  "TemplateHTML": "test/index.html",
+  "BundleDir": "build",
+  "WatchFiles": false,
+  "Env": {
+    "NODE_ENV": "development"
+  },
+  "DevServer": {
+    "Enable": false,
+    "Port": 8080
+  },
+  "PermanentCache": {
+    "Enable": false,
+    "Dir": ".go-bundler-cache"
+  }
+}

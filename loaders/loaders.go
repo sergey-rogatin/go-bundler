@@ -27,8 +27,8 @@ type ConfigJSON struct {
 		Port   int
 	}
 	PermanentCache struct {
-		Enable  bool
-		DirName string
+		Enable bool
+		Dir    string
 	}
 }
 

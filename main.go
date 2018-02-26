@@ -146,13 +146,6 @@ func generateConfigFile(fileName string, defaults *loaders.ConfigJSON) loaders.C
 
 	result.PermanentCache.Enable = getYN(ask(fmt.Sprintf("Enable permanent cache? y/n (n): ")))
 
-	if result.PermanentCache.Enable {
-		result.PermanentCache.DirName = ask(fmt.Sprintf("Cache save directory (%d): ", defaults.PermanentCache.DirName))
-		if result.PermanentCache.DirName == "" {
-			result.PermanentCache.DirName = defaults.PermanentCache.DirName
-		}
-	}
-
 	fileData, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		panic(err)
@@ -181,7 +174,7 @@ func main() {
 	configDefaults.DevServer.Enable = false
 	configDefaults.DevServer.Port = 8080
 	configDefaults.PermanentCache.Enable = false
-	configDefaults.PermanentCache.DirName = ".go-bundler-cache"
+	configDefaults.PermanentCache.Dir = ".go-bundler-cache"
 	configDefaults.Env = map[string]string{
 		"NODE_ENV": "development",
 	}
@@ -199,7 +192,7 @@ func main() {
 
 	cache := &bundleCache{}
 	if config.PermanentCache.Enable {
-		cache.DirName = config.PermanentCache.DirName
+		cache.DirName = config.PermanentCache.Dir
 	}
 
 	cache.loadFile()
@@ -278,7 +271,7 @@ func createBundle(
 			cacheSaveStart := time.Now()
 			cache.saveFile()
 			cacheSaveTime := time.Since(cacheSaveStart)
-			util.Cprintf(util.C_GREEN, "Cache saved to %s in %s\n", config.PermanentCache.DirName, cacheSaveTime)
+			util.Cprintf(util.C_GREEN, "Cache saved to %s in %s\n", config.PermanentCache.Dir, cacheSaveTime)
 		}
 
 		if len(warnings) > 0 {

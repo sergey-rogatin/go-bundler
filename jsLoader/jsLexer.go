@@ -160,6 +160,13 @@ func lex(src []byte) []token {
 			eat(t_TEMPLATE_LITERAL_QUOTE)
 			end()
 
+		case c == '\r' && src[i+1] == '\n':
+			eat(t_NEWLINE)
+			eat(t_NEWLINE)
+			end()
+			line++
+			column = 0
+
 		case c == '\n' || c == '\v' || c == '\f':
 			eat(t_NEWLINE)
 			end()
