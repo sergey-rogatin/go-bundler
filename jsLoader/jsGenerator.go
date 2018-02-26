@@ -84,10 +84,13 @@ func printAst(n ast) string {
 		value := n.children[1]
 
 		res := printAst(key)
-		if value.t != n_EMPTY {
+		if value.t != n_EMPTY && value.value != key.value {
 			res += ":" + printAst(value)
 		}
 		return res
+
+	case n_OBJECT_MEMBER:
+		return n.value
 
 	case n_OBJECT_METHOD, n_CLASS_METHOD:
 		kind := n.value

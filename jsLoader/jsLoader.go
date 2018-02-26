@@ -7,17 +7,76 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/lvl5hm/go-bundler/loaders"
+
 	"github.com/lvl5hm/go-bundler/util"
 )
 
-type context struct {
+type environment struct {
 	fileName      string
 	fileImports   []string
 	hasES6Exports bool
 	env           map[string]string
 }
 
-func LoadFile(fileName string, env map[string]string) ([]byte, []string, error) {
+type context struct {
+	declaredVars map[string]ast
+	parent       *context
+
+	isInsideDeclaration bool
+}
+
+func getReplaceImport(ctx *context, varName string) (ast, bool) {
+	if replace, ok := ctx.declaredVars[varName]; ok {
+		if replace.t != n_EMPTY {
+			return replace, true
+		}
+		return replace, false
+	}
+	if ctx.parent != nil {
+		return getReplaceImport(ctx.parent, varName)
+	}
+	return ast{}, false
+}
+
+func setDeclaredVar(ctx *context, varName string, value ast) {
+	ctx.declaredVars[varName] = value
+}
+
+var Loader jsLoader
+
+type jsLoader struct{}
+
+func (j jsLoader) BeforeBuild(fileName string, config *loaders.ConfigJSON) {}
+
+func (j jsLoader) LoadAndTransformFile(
+	fileName string,
+	config *loaders.ConfigJSON,
+) ([]byte, []string, error) {
+	src, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		return nil, nil, err
+	}
+	return j.TransformFile(fileName, src, config)
+}
+
+func (j jsLoader) TransformFile(
+	fileName string,
+	src []byte,
+	config *loaders.ConfigJSON,
+) ([]byte, []string, error) {
+	tokens := lex(src)
+	initialProgram, parseErr := parseTokens(tokens)
+	if parseErr != nil {
+		return nil, nil, parseErr
+	}
+
+	resultProgram, fileImports := transformIntoModule(initialProgram, fileName, config.Env)
+	resultBytes := []byte(printAst(resultProgram))
+	return resultBytes, fileImports, nil
+}
+
+func LoadFile(fileName string, config *loaders.ConfigJSON) ([]byte, []string, error) {
 	src, err := ioutil.ReadFile(fileName)
 	if err != nil {
 		return nil, nil, err
@@ -29,7 +88,7 @@ func LoadFile(fileName string, env map[string]string) ([]byte, []string, error) 
 		return nil, nil, parseErr
 	}
 
-	resultProgram, fileImports := transformIntoModule(initialProgram, fileName, env)
+	resultProgram, fileImports := transformIntoModule(initialProgram, fileName, config.Env)
 	resultBytes := []byte(printAst(resultProgram))
 	return resultBytes, fileImports, nil
 }
@@ -47,6 +106,9 @@ func ParseAndPrint(src []byte) ([]byte, error) {
 
 func GetJsBundleFileHead() []byte {
 	start := `function requireES6(module, impName) {
+    if (!module) {
+      return undefined;
+    }
 		if (module.hasES6Exports) {
 			if (impName === '*') {
 				return module.es6;
@@ -103,7 +165,7 @@ func GetJsBundleFileTail(
 			createImportTree(importPath, append(path, fileName))
 		}
 
-		moduleName := "'" + CreateVarNameFromPath(fileName) + "'"
+		moduleName := "'" + loaders.CreateVarNameFromPath(fileName) + "'"
 		if util.IndexOf(moduleOrder, moduleName) < 0 {
 			moduleOrder = append(moduleOrder, moduleName)
 		}
@@ -118,58 +180,121 @@ func GetJsBundleFileTail(
 	return result, warnings
 }
 
-func modifyAst(n ast, ctx *context) ast {
+func modifyChildren(n ast, e *environment, ctx *context) ast {
+	res := n
+	res.children = []ast{}
+	for _, c := range n.children {
+		res.children = append(res.children, modifyAst(c, e, ctx))
+	}
+	return res
+}
+
+func modifyAst(n ast, e *environment, ctx *context) ast {
 	switch n.t {
 
+	case n_DECLARATOR:
+		ctx.isInsideDeclaration = true
+		n.children[0] = modifyAst(n.children[0], e, ctx)
+		ctx.isInsideDeclaration = false
+
+		n.children[1] = modifyAst(n.children[1], e, ctx)
+		return n
+
+	case n_FUNCTION_PARAMETERS:
+		ctx.isInsideDeclaration = true
+		res := modifyChildren(n, e, ctx)
+		ctx.isInsideDeclaration = false
+		return res
+
+	case n_FUNCTION_EXPRESSION,
+		n_FUNCTION_DECLARATION,
+		n_LAMBDA_EXPRESSION,
+		n_BLOCK_STATEMENT,
+		n_FOR_IN_STATEMENT,
+		n_FOR_OF_STATEMENT,
+		n_FOR_STATEMENT:
+
+		childCtx := context{}
+		childCtx.parent = ctx
+		childCtx.isInsideDeclaration = ctx.isInsideDeclaration
+		childCtx.declaredVars = map[string]ast{}
+
+		return modifyChildren(n, e, &childCtx)
+
+	case n_CALCULATED_OBJECT_KEY,
+		n_OBJECT_KEY,
+		n_NON_IDENTIFIER_OBJECT_KEY:
+
+		if ctx.isInsideDeclaration {
+			setDeclaredVar(ctx, n.value, ast{})
+		}
+		return n
+
 	case n_BINARY_EXPRESSION:
-		return modifyBinaryExpression(n, ctx)
+		return modifyBinaryExpression(n, e, ctx)
 
 	case n_MEMBER_EXPRESSION:
-		return modifyMemberExpression(n, ctx)
+		return modifyMemberExpression(n, e, ctx)
 
 	case n_IF_STATEMENT:
-		return modifyIfStatement(n, ctx)
+		return modifyIfStatement(n, e, ctx)
 
 	case n_FUNCTION_CALL:
-		return modifyFunctionCall(n, ctx)
+		return modifyFunctionCall(n, e, ctx)
 
 	case n_EXPORT_STATEMENT:
-		return modifyExport(n, ctx)
+		return modifyExport(n, e, ctx)
 
 	case n_PROGRAM:
-		return modifyProgram(n, ctx)
+		return modifyProgram(n, e, ctx)
 
 	case n_IMPORT_STATEMENT:
-		return modifyImport(n, ctx)
+		return modifyImport(n, e, ctx)
+
+	case n_IDENTIFIER:
+		return modifyIdentifier(n, e, ctx)
 
 	default:
-		res := n
-		res.children = []ast{}
-		for _, c := range n.children {
-			res.children = append(res.children, modifyAst(c, ctx))
-		}
-		return res
+		return modifyChildren(n, e, ctx)
 	}
 }
 
-func modifyBinaryExpression(n ast, ctx *context) ast {
+func modifyIdentifier(n ast, e *environment, ctx *context) ast {
+	if ctx.isInsideDeclaration {
+		setDeclaredVar(ctx, n.value, ast{})
+	} else {
+		if replace, ok := getReplaceImport(ctx, n.value); ok {
+			return replace
+		}
+	}
+	return n
+}
+
+func modifyBinaryExpression(n ast, e *environment, ctx *context) ast {
 	operator := n.value
-	left := modifyAst(n.children[0], ctx)
-	right := modifyAst(n.children[1], ctx)
+	left := modifyAst(n.children[0], e, ctx)
+	right := modifyAst(n.children[1], e, ctx)
 
 	if operator == "===" || operator == "==" {
 		if left.t == n_STRING_LITERAL && left.t == right.t {
 			if printAst(left) == printAst(right) {
-				return makeNode(n_BOOL_LITERAL, "true")
+				return newNode(n_BOOL_LITERAL, "true")
 			}
-			return makeNode(n_BOOL_LITERAL, "false")
+			return newNode(n_BOOL_LITERAL, "false")
+		}
+	} else if operator == "!==" || operator == "!=" {
+		if left.t == n_STRING_LITERAL && left.t == right.t {
+			if printAst(left) != printAst(right) {
+				return newNode(n_BOOL_LITERAL, "true")
+			}
+			return newNode(n_BOOL_LITERAL, "false")
 		}
 	}
 
-	return makeNode(n_BINARY_EXPRESSION, operator, left, right)
+	return newNode(n_BINARY_EXPRESSION, operator, left, right)
 }
 
-func modifyMemberExpression(n ast, ctx *context) ast {
+func modifyMemberExpression(n ast, e *environment, ctx *context) ast {
 	object := n.children[0]
 	prop := n.children[1]
 
@@ -182,88 +307,78 @@ func modifyMemberExpression(n ast, ctx *context) ast {
 			innerProp.t == n_IDENTIFIER &&
 			innerProp.value == "env" {
 
-			if envVal, ok := ctx.env[prop.value]; ok {
-				return makeNode(n_STRING_LITERAL, envVal)
+			if envVal, ok := e.env[prop.value]; ok {
+				return newNode(n_STRING_LITERAL, envVal)
 			}
 		}
 	}
 
-	children := []ast{}
-	for _, c := range n.children {
-		children = append(children, modifyAst(c, ctx))
-	}
-	n.children = children
-	return n
+	return modifyChildren(n, e, ctx)
 }
 
-func modifyIfStatement(n ast, ctx *context) ast {
-	cond := modifyAst(n.children[0], ctx)
+func modifyIfStatement(n ast, e *environment, ctx *context) ast {
+	cond := modifyAst(n.children[0], e, ctx)
 	conseq := n.children[1]
 	altern := n.children[2]
 
 	if cond.t == n_BOOL_LITERAL {
 		if cond.value == "true" {
-			return modifyAst(conseq, ctx)
+			return modifyAst(conseq, e, ctx)
 		}
-		return modifyAst(altern, ctx)
+		return modifyAst(altern, e, ctx)
 	}
 
-	res := n
-	res.children = []ast{}
-	for _, c := range n.children {
-		res.children = append(res.children, modifyAst(c, ctx))
-	}
-	return res
+	return modifyChildren(n, e, ctx)
 }
 
-func modifyProgram(n ast, ctx *context) ast {
+func modifyProgram(n ast, e *environment, ctx *context) ast {
 	children := []ast{}
 	for _, c := range n.children {
-		children = append(children, modifyAst(c, ctx))
+		children = append(children, modifyAst(c, e, ctx))
 	}
 	n.children = children
 
-	moduleName := CreateVarNameFromPath(ctx.fileName)
+	moduleName := loaders.CreateVarNameFromPath(e.fileName)
 
 	hasES6ExportsStr := "false"
-	if ctx.hasES6Exports {
+	if e.hasES6Exports {
 		hasES6ExportsStr = "true"
 	}
 
 	beforeSt := []ast{
-		makeNode(
+		newNode(
 			n_DECLARATION_STATEMENT, "",
-			makeNode(
+			newNode(
 				n_VARIABLE_DECLARATION, "var",
-				makeNode(
+				newNode(
 					n_DECLARATOR, "",
-					makeNode(n_IDENTIFIER, "module"),
-					makeNode(
+					newNode(n_IDENTIFIER, "module"),
+					newNode(
 						n_OBJECT_LITERAL, "",
-						makeNode(
+						newNode(
 							n_OBJECT_PROPERTY, "",
-							makeNode(n_OBJECT_KEY, "exports"),
-							makeNode(n_OBJECT_LITERAL, ""),
+							newNode(n_OBJECT_KEY, "exports"),
+							newNode(n_OBJECT_LITERAL, ""),
 						),
-						makeNode(
+						newNode(
 							n_OBJECT_PROPERTY, "",
-							makeNode(n_OBJECT_KEY, "es6"),
-							makeNode(n_OBJECT_LITERAL, ""),
+							newNode(n_OBJECT_KEY, "es6"),
+							newNode(n_OBJECT_LITERAL, ""),
 						),
-						makeNode(
+						newNode(
 							n_OBJECT_PROPERTY, "",
-							makeNode(n_OBJECT_KEY, "hasES6Exports"),
-							makeNode(n_BOOL_LITERAL, hasES6ExportsStr),
+							newNode(n_OBJECT_KEY, "hasES6Exports"),
+							newNode(n_BOOL_LITERAL, hasES6ExportsStr),
 						),
 					),
 				),
-				makeNode(
+				newNode(
 					n_DECLARATOR, "",
-					makeNode(n_IDENTIFIER, "exports"),
-					makeNode(
+					newNode(n_IDENTIFIER, "exports"),
+					newNode(
 						n_MEMBER_EXPRESSION, "",
-						makeNode(n_IDENTIFIER, "module"),
-						makeNode(n_IDENTIFIER, "exports"),
+						newNode(n_IDENTIFIER, "module"),
+						newNode(n_IDENTIFIER, "exports"),
 					),
 				),
 			),
@@ -271,9 +386,9 @@ func modifyProgram(n ast, ctx *context) ast {
 	}
 
 	afterSt := []ast{
-		makeNode(
+		newNode(
 			n_RETURN_STATEMENT, "",
-			makeNode(n_IDENTIFIER, "module"),
+			newNode(n_IDENTIFIER, "module"),
 		),
 	}
 
@@ -282,21 +397,21 @@ func modifyProgram(n ast, ctx *context) ast {
 		append(n.children, afterSt...)...,
 	)
 
-	funcExpr := makeNode(
+	funcExpr := newNode(
 		n_FUNCTION_EXPRESSION, "",
-		makeNode(n_EMPTY, ""),
-		makeNode(n_FUNCTION_PARAMETERS, ""),
-		makeNode(n_BLOCK_STATEMENT, "", allSt...),
+		newNode(n_EMPTY, ""),
+		newNode(n_FUNCTION_PARAMETERS, ""),
+		newNode(n_BLOCK_STATEMENT, "", allSt...),
 	)
 
-	decl := makeNode(
+	decl := newNode(
 		n_EXPRESSION_STATEMENT, "",
-		makeNode(
+		newNode(
 			n_ASSIGNMENT_EXPRESSION, "=",
-			makeNode(
+			newNode(
 				n_MEMBER_EXPRESSION, "",
-				makeNode(n_IDENTIFIER, "moduleFns"),
-				makeNode(n_IDENTIFIER, moduleName),
+				newNode(n_IDENTIFIER, "moduleFns"),
+				newNode(n_IDENTIFIER, moduleName),
 			),
 			funcExpr,
 		),
@@ -306,33 +421,33 @@ func modifyProgram(n ast, ctx *context) ast {
 }
 
 func getImport(resolvedPath, eType, name string) ast {
-	moduleName := CreateVarNameFromPath(resolvedPath)
+	moduleName := loaders.CreateVarNameFromPath(resolvedPath)
 
 	funcName := eType
 
 	args := []ast{
-		makeNode(
+		newNode(
 			n_MEMBER_EXPRESSION, "",
-			makeNode(n_IDENTIFIER, "modules"),
-			makeNode(n_IDENTIFIER, moduleName),
+			newNode(n_IDENTIFIER, "modules"),
+			newNode(n_IDENTIFIER, moduleName),
 		),
 	}
 
 	if name != "" {
-		args = append(args, makeNode(n_STRING_LITERAL, name))
+		args = append(args, newNode(n_STRING_LITERAL, name))
 	}
 
-	return makeNode(
+	return newNode(
 		n_FUNCTION_CALL, "",
-		makeNode(n_IDENTIFIER, funcName),
-		makeNode(n_FUNCTION_ARGS, "", args...),
+		newNode(n_IDENTIFIER, funcName),
+		newNode(n_FUNCTION_ARGS, "", args...),
 	)
 }
 
-func modifyFunctionCall(n ast, ctx *context) ast {
+func modifyFunctionCall(n ast, e *environment, ctx *context) ast {
 	children := []ast{}
 	for _, c := range n.children {
-		children = append(children, modifyAst(c, ctx))
+		children = append(children, modifyAst(c, e, ctx))
 	}
 	n.children = children
 
@@ -343,14 +458,14 @@ func modifyFunctionCall(n ast, ctx *context) ast {
 		args := n.children[1].children
 
 		path := args[0].value
-		resolvedPath := resolveES6ImportPath(path, ctx.fileName)
-		ctx.fileImports = append(ctx.fileImports, resolvedPath)
-		moduleName := CreateVarNameFromPath(resolvedPath)
+		resolvedPath := resolveES6ImportPath(path, e.fileName)
+		e.fileImports = append(e.fileImports, resolvedPath)
+		moduleName := loaders.CreateVarNameFromPath(resolvedPath)
 
-		args[0] = makeNode(
+		args[0] = newNode(
 			n_MEMBER_EXPRESSION, "",
-			makeNode(n_IDENTIFIER, "modules"),
-			makeNode(n_IDENTIFIER, moduleName),
+			newNode(n_IDENTIFIER, "modules"),
+			newNode(n_IDENTIFIER, moduleName),
 		)
 		return n
 	}
@@ -358,85 +473,79 @@ func modifyFunctionCall(n ast, ctx *context) ast {
 	return n
 }
 
-func modifyImport(n ast, ctx *context) ast {
-	children := []ast{}
-	for _, c := range n.children {
-		children = append(children, modifyAst(c, ctx))
-	}
-	n.children = children
+func modifyImport(n ast, e *environment, ctx *context) ast {
+	n = modifyChildren(n, e, ctx)
 
 	vars := n.children[0].children
 	all := n.children[1].value
 	path := n.children[2].value
-	resolvedPath := resolveES6ImportPath(path, ctx.fileName)
-	ctx.fileImports = append(ctx.fileImports, resolvedPath)
+	resolvedPath := resolveES6ImportPath(path, e.fileName)
+	e.fileImports = append(e.fileImports, resolvedPath)
 
 	decls := []ast{}
 
 	if all != "" {
-		alias := makeNode(n_IDENTIFIER, all)
-		allDecl := makeNode(
-			n_DECLARATOR, "", alias, getImport(
-				resolvedPath, "requireES6", "*",
-			),
+		alias := newNode(n_IDENTIFIER, all)
+		importReplace := getImport(resolvedPath, "requireES6", "*")
+
+		allDecl := newNode(
+			n_DECLARATOR, "", alias, importReplace,
 		)
 		decls = append(decls, allDecl)
+		setDeclaredVar(ctx, all, importReplace)
 	}
 
 	for _, v := range vars {
 		name := v.children[0]
 		alias := v.children[1]
-		d := makeNode(
-			n_DECLARATOR, "", alias, getImport(
-				resolvedPath, "requireES6", name.value,
-			),
+		importReplace := getImport(resolvedPath, "requireES6", name.value)
+
+		d := newNode(
+			n_DECLARATOR, "", alias, importReplace,
 		)
 		decls = append(decls, d)
+		setDeclaredVar(ctx, alias.value, importReplace)
 	}
 
 	if len(decls) > 0 {
-		return makeNode(
+		return newNode(
 			n_DECLARATION_STATEMENT, "",
-			makeNode(n_VARIABLE_DECLARATION, "var", decls...),
+			newNode(n_VARIABLE_DECLARATION, "var", decls...),
 		)
 	}
-	return makeNode(n_EMPTY, "")
+	return newNode(n_EMPTY, "")
 }
 
-func modifyExport(n ast, ctx *context) ast {
-	ctx.hasES6Exports = true
+func modifyExport(n ast, e *environment, ctx *context) ast {
+	e.hasES6Exports = true
 
-	children := []ast{}
-	for _, c := range n.children {
-		children = append(children, modifyAst(c, ctx))
-	}
-	n.children = children
+	n = modifyChildren(n, e, ctx)
 
 	vars := n.children[0].children
 	declaration := n.children[1]
 	path := n.children[2].value
 
-	es6Exports := makeNode(
+	es6Exports := newNode(
 		n_MEMBER_EXPRESSION, "",
-		makeNode(n_IDENTIFIER, "module"),
-		makeNode(n_IDENTIFIER, "es6"),
+		newNode(n_IDENTIFIER, "module"),
+		newNode(n_IDENTIFIER, "es6"),
 	)
 
 	if path != "" {
-		resolvedPath := resolveES6ImportPath(path, ctx.fileName)
-		ctx.fileImports = append(ctx.fileImports, resolvedPath)
+		resolvedPath := resolveES6ImportPath(path, e.fileName)
+		e.fileImports = append(e.fileImports, resolvedPath)
 
 		if n.children[0].t == n_EXPORT_ALL {
-			return makeNode(
+			return newNode(
 				n_EXPRESSION_STATEMENT, "",
-				makeNode(
+				newNode(
 					n_FUNCTION_CALL, "",
-					makeNode(
+					newNode(
 						n_MEMBER_EXPRESSION, "",
-						makeNode(n_IDENTIFIER, "Object"),
-						makeNode(n_IDENTIFIER, "assign"),
+						newNode(n_IDENTIFIER, "Object"),
+						newNode(n_IDENTIFIER, "assign"),
 					),
-					makeNode(
+					newNode(
 						n_FUNCTION_ARGS, "",
 						es6Exports,
 						getImport(resolvedPath, "requireES6", "*"),
@@ -451,49 +560,44 @@ func modifyExport(n ast, ctx *context) ast {
 		name := v.children[0]
 		alias := v.children[1].value
 
-		left := makeNode(
+		left := newNode(
 			n_MEMBER_EXPRESSION, "",
 			es6Exports,
-			makeNode(n_IDENTIFIER, alias),
+			newNode(n_IDENTIFIER, alias),
 		)
 
 		var right ast
 		if path != "" {
-			resolvedPath := resolveES6ImportPath(path, ctx.fileName)
+			resolvedPath := resolveES6ImportPath(path, e.fileName)
 			right = getImport(resolvedPath, "requireES6", name.value)
 		} else {
 			right = name
 		}
 
-		ass := makeNode(n_ASSIGNMENT_EXPRESSION, "=", left, right)
+		ass := newNode(n_ASSIGNMENT_EXPRESSION, "=", left, right)
 		assignments = append(assignments, ass)
 	}
 
-	seq := makeNode(n_SEQUENCE_EXPRESSION, "", assignments...)
-	exprSt := makeNode(n_EXPRESSION_STATEMENT, "", seq)
+	seq := newNode(n_SEQUENCE_EXPRESSION, "", assignments...)
+	exprSt := newNode(n_EXPRESSION_STATEMENT, "", seq)
 
-	multi := makeNode(n_MULTISTATEMENT, "", declaration, exprSt)
+	multi := newNode(n_MULTISTATEMENT, "", declaration, exprSt)
 
 	return multi
 }
 
 func transformIntoModule(src ast, fileName string, env map[string]string) (ast, []string) {
+	e := environment{}
+	e.fileImports = []string{}
+	e.fileName = fileName
+	e.env = env
+
 	ctx := context{}
-	ctx.fileImports = []string{}
-	ctx.fileName = fileName
-	ctx.env = env
+	ctx.declaredVars = map[string]ast{}
 
-	res := modifyAst(src, &ctx)
-	// res := src
+	res := modifyAst(src, &e, &ctx)
 
-	return res, ctx.fileImports
-}
-
-func CreateVarNameFromPath(path string) string {
-	newName := strings.Replace(path, "/", "_", -1)
-	newName = strings.Replace(newName, ".", "_", -1)
-	newName = strings.Replace(newName, "-", "_", -1)
-	return newName
+	return res, e.fileImports
 }
 
 func makeToken(text string) token {

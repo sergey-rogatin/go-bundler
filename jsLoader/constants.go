@@ -3,233 +3,233 @@ package jsLoader
 type tokenType int32
 
 var keywords = map[string]tokenType{
-	"break":      tBREAK,
-	"case":       tCASE,
-	"catch":      tCATCH,
-	"class":      tCLASS,
-	"const":      tCONST,
-	"continue":   tCONTINUE,
-	"debugger":   tDEBUGGER,
-	"default":    tDEFAULT,
-	"delete":     tDELETE,
-	"do":         tDO,
-	"else":       tELSE,
-	"export":     tEXPORT,
-	"extends":    tEXTENDS,
-	"finally":    tFINALLY,
-	"for":        tFOR,
-	"function":   tFUNCTION,
-	"if":         tIF,
-	"import":     tIMPORT,
-	"in":         tIN,
-	"instanceof": tINSTANCEOF,
-	"new":        tNEW,
-	"return":     tRETURN,
+	"break":      t_BREAK,
+	"case":       t_CASE,
+	"catch":      t_CATCH,
+	"class":      t_CLASS,
+	"const":      t_CONST,
+	"continue":   t_CONTINUE,
+	"debugger":   t_DEBUGGER,
+	"default":    t_DEFAULT,
+	"delete":     t_DELETE,
+	"do":         t_DO,
+	"else":       t_ELSE,
+	"export":     t_EXPORT,
+	"extends":    t_EXTENDS,
+	"finally":    t_FINALLY,
+	"for":        t_FOR,
+	"function":   t_FUNCTION,
+	"if":         t_IF,
+	"import":     t_IMPORT,
+	"in":         t_IN,
+	"instanceof": t_INSTANCEOF,
+	"new":        t_NEW,
+	"return":     t_RETURN,
 	// "super":      tSUPER,
-	"switch":     tSWITCH,
-	"this":       tTHIS,
-	"throw":      tTHROW,
-	"try":        tTRY,
-	"typeof":     tTYPEOF,
-	"var":        tVAR,
-	"void":       tVOID,
-	"while":      tWHILE,
-	"with":       tWITH,
-	"yield":      tYIELD,
-	"yield*":     tYIELD_STAR,
-	"enum":       tENUM,
-	"implements": tIMPLEMENTS,
-	"interface":  tINTERFACE,
-	"let":        tLET,
-	"package":    tPACKAGE,
-	"private":    tPRIVATE,
-	"protected":  tPROTECTED,
-	"public":     tPUBLIC,
-	"static":     tSTATIC,
-	"await":      tAWAIT,
-	"async":      tASYNC,
-	"null":       tNULL,
-	"true":       tTRUE,
-	"false":      tFALSE,
+	"switch":     t_SWITCH,
+	"this":       t_THIS,
+	"throw":      t_THROW,
+	"try":        t_TRY,
+	"typeof":     t_TYPEOF,
+	"var":        t_VAR,
+	"void":       t_VOID,
+	"while":      t_WHILE,
+	"with":       t_WITH,
+	"yield":      t_YIELD,
+	"yield*":     t_YIELD_STAR,
+	"enum":       t_ENUM,
+	"implements": t_IMPLEMENTS,
+	"interface":  t_INTERFACE,
+	"let":        t_LET,
+	"package":    t_PACKAGE,
+	"private":    t_PRIVATE,
+	"protected":  t_PROTECTED,
+	"public":     t_PUBLIC,
+	"static":     t_STATIC,
+	"await":      t_AWAIT,
+	"async":      t_ASYNC,
+	"null":       t_NULL,
+	"true":       t_TRUE,
+	"false":      t_FALSE,
 	// "as":         tAS,
 	// "from":       tFROM,
-	"of": tOF,
+	"of": t_OF,
 }
 
 var operators = map[string]tokenType{
-	"~":    tBITWISE_NOT,
-	"&":    tBITWISE_AND,
-	"|":    tBITWISE_OR,
-	"^":    tBITWISE_XOR,
-	"*":    tMULT,
-	"**":   tEXP,
-	"-":    tMINUS,
-	"+":    tPLUS,
-	"/":    tDIV,
-	"%":    tMOD,
-	"+=":   tPLUS_ASSIGN,
-	"*=":   tMULT_ASSIGN,
-	"-=":   tMINUS_ASSIGN,
-	"/=":   tDIV_ASSIGN,
-	"%=":   tMOD_ASSIGN,
-	"<<=":  tBITWISE_SHIFT_LEFT_ASSIGN,
-	">>=":  tBITWISE_SHIFT_RIGHT_ASSIGN,
-	">>>=": tBITWISE_SHIFT_RIGHT_ZERO_ASSIGN,
-	"&=":   tBITWISE_AND_ASSIGN,
-	"^=":   tBITWISE_XOR_ASSIGN,
-	"|=":   tBITWISE_OR_ASSIGN,
-	"++":   tINC,
-	"--":   tDEC,
-	"!":    tNOT,
-	"&&":   tAND,
-	"||":   tOR,
-	">":    tGREATER,
-	"<":    tLESS,
-	">=":   tGREATER_EQUALS,
-	"<=":   tLESS_EQUALS,
-	"==":   tEQUALS,
-	"===":  tEQUALS_STRICT,
-	"!=":   tNOT_EQUALS,
-	"!==":  tNOT_EQUALS_STRICT,
-	"(":    tPAREN_LEFT,
-	")":    tPAREN_RIGHT,
-	"[":    tBRACKET_LEFT,
-	"]":    tBRACKET_RIGHT,
-	"{":    tCURLY_LEFT,
-	"}":    tCURLY_RIGHT,
-	".":    tDOT,
-	",":    tCOMMA,
-	"?":    tQUESTION,
-	";":    tSEMI,
-	":":    tCOLON,
-	"=":    tASSIGN,
-	"=>":   tLAMBDA,
-	">>":   tBITWISE_SHIFT_RIGHT,
-	"<<":   tBITWISE_SHIFT_LEFT,
-	">>>":  tBITWISE_SHIFT_RIGHT_ZERO,
-	"...":  tSPREAD,
-	"\\":   tESCAPE,
+	"~":    t_BITWISE_NOT,
+	"&":    t_BITWISE_AND,
+	"|":    t_BITWISE_OR,
+	"^":    t_BITWISE_XOR,
+	"*":    t_MULT,
+	"**":   t_EXP,
+	"-":    t_MINUS,
+	"+":    t_PLUS,
+	"/":    t_DIV,
+	"%":    t_MOD,
+	"+=":   t_PLUS_ASSIGN,
+	"*=":   t_MULT_ASSIGN,
+	"-=":   t_MINUS_ASSIGN,
+	"/=":   t_DIV_ASSIGN,
+	"%=":   t_MOD_ASSIGN,
+	"<<=":  t_BITWISE_SHIFT_LEFT_ASSIGN,
+	">>=":  t_BITWISE_SHIFT_RIGHT_ASSIGN,
+	">>>=": t_BITWISE_SHIFT_RIGHT_ZERO_ASSIGN,
+	"&=":   t_BITWISE_AND_ASSIGN,
+	"^=":   t_BITWISE_XOR_ASSIGN,
+	"|=":   t_BITWISE_OR_ASSIGN,
+	"++":   t_INC,
+	"--":   t_DEC,
+	"!":    t_NOT,
+	"&&":   t_AND,
+	"||":   t_OR,
+	">":    t_GREATER,
+	"<":    t_LESS,
+	">=":   t_GREATER_EQUALS,
+	"<=":   t_LESS_EQUALS,
+	"==":   t_EQUALS,
+	"===":  t_EQUALS_STRICT,
+	"!=":   t_NOT_EQUALS,
+	"!==":  t_NOT_EQUALS_STRICT,
+	"(":    t_PAREN_LEFT,
+	")":    t_PAREN_RIGHT,
+	"[":    t_BRACKET_LEFT,
+	"]":    t_BRACKET_RIGHT,
+	"{":    t_CURLY_LEFT,
+	"}":    t_CURLY_RIGHT,
+	".":    t_DOT,
+	",":    t_COMMA,
+	"?":    t_QUESTION,
+	";":    t_SEMI,
+	":":    t_COLON,
+	"=":    t_ASSIGN,
+	"=>":   t_LAMBDA,
+	">>":   t_BITWISE_SHIFT_RIGHT,
+	"<<":   t_BITWISE_SHIFT_LEFT,
+	">>>":  t_BITWISE_SHIFT_RIGHT_ZERO,
+	"...":  t_SPREAD,
+	"\\":   t_ESCAPE,
 }
 
 const (
-	tUNDEFINED tokenType = iota
-	tANY
-	tEND_OF_INPUT
+	t_UNDEFINED tokenType = iota
+	t_ANY
+	t_END_OF_INPUT
 
-	tNEWLINE
+	t_NEWLINE
 
-	tBREAK
-	tCASE
-	tCATCH
-	tCLASS
-	tCONST
-	tCONTINUE
-	tDEBUGGER
-	tDEFAULT
-	tDELETE
-	tDO
-	tELSE
-	tEXPORT
-	tEXTENDS
-	tFINALLY
-	tFOR
-	tFUNCTION
-	tIF
-	tIMPORT
-	tIN
-	tINSTANCEOF
-	tNEW
-	tRETURN
-	tSUPER
-	tSWITCH
-	tTHIS
-	tTHROW
-	tTRY
-	tTYPEOF
-	tVAR
-	tVOID
-	tWHILE
-	tWITH
-	tYIELD
-	tYIELD_STAR
-	tENUM
-	tIMPLEMENTS
-	tINTERFACE
-	tLET
-	tPACKAGE
-	tPRIVATE
-	tPROTECTED
-	tPUBLIC
-	tSTATIC
-	tAWAIT
-	tASYNC
-	tNULL
-	tTRUE
-	tFALSE
+	t_BREAK
+	t_CASE
+	t_CATCH
+	t_CLASS
+	t_CONST
+	t_CONTINUE
+	t_DEBUGGER
+	t_DEFAULT
+	t_DELETE
+	t_DO
+	t_ELSE
+	t_EXPORT
+	t_EXTENDS
+	t_FINALLY
+	t_FOR
+	t_FUNCTION
+	t_IF
+	t_IMPORT
+	t_IN
+	t_INSTANCEOF
+	t_NEW
+	t_RETURN
+	t_SUPER
+	t_SWITCH
+	t_THIS
+	t_THROW
+	t_TRY
+	t_TYPEOF
+	t_VAR
+	t_VOID
+	t_WHILE
+	t_WITH
+	t_YIELD
+	t_YIELD_STAR
+	t_ENUM
+	t_IMPLEMENTS
+	t_INTERFACE
+	t_LET
+	t_PACKAGE
+	t_PRIVATE
+	t_PROTECTED
+	t_PUBLIC
+	t_STATIC
+	t_AWAIT
+	t_ASYNC
+	t_NULL
+	t_TRUE
+	t_FALSE
 	// tAS
 	// tFROM
-	tOF
+	t_OF
 
-	tBITWISE_NOT
-	tBITWISE_AND
-	tBITWISE_OR
-	tBITWISE_XOR
-	tMULT
-	tEXP
-	tMINUS
-	tPLUS
-	tDIV
-	tMOD
-	tPLUS_ASSIGN
-	tMULT_ASSIGN
-	tMINUS_ASSIGN
-	tDIV_ASSIGN
-	tMOD_ASSIGN
-	tBITWISE_SHIFT_LEFT_ASSIGN
-	tBITWISE_SHIFT_RIGHT_ASSIGN
-	tBITWISE_SHIFT_RIGHT_ZERO_ASSIGN
-	tBITWISE_AND_ASSIGN
-	tBITWISE_XOR_ASSIGN
-	tBITWISE_OR_ASSIGN
-	tINC
-	tDEC
-	tNOT
-	tAND
-	tOR
-	tGREATER
-	tLESS
-	tGREATER_EQUALS
-	tLESS_EQUALS
-	tEQUALS
-	tEQUALS_STRICT
-	tNOT_EQUALS
-	tNOT_EQUALS_STRICT
-	tPAREN_LEFT
-	tPAREN_RIGHT
-	tBRACKET_LEFT
-	tBRACKET_RIGHT
-	tCURLY_LEFT
-	tCURLY_RIGHT
-	tDOT
-	tCOMMA
-	tQUESTION
-	tSEMI
-	tCOLON
-	tASSIGN
-	tLAMBDA
-	tBITWISE_SHIFT_RIGHT
-	tBITWISE_SHIFT_LEFT
-	tBITWISE_SHIFT_RIGHT_ZERO
-	tSPREAD
+	t_BITWISE_NOT
+	t_BITWISE_AND
+	t_BITWISE_OR
+	t_BITWISE_XOR
+	t_MULT
+	t_EXP
+	t_MINUS
+	t_PLUS
+	t_DIV
+	t_MOD
+	t_PLUS_ASSIGN
+	t_MULT_ASSIGN
+	t_MINUS_ASSIGN
+	t_DIV_ASSIGN
+	t_MOD_ASSIGN
+	t_BITWISE_SHIFT_LEFT_ASSIGN
+	t_BITWISE_SHIFT_RIGHT_ASSIGN
+	t_BITWISE_SHIFT_RIGHT_ZERO_ASSIGN
+	t_BITWISE_AND_ASSIGN
+	t_BITWISE_XOR_ASSIGN
+	t_BITWISE_OR_ASSIGN
+	t_INC
+	t_DEC
+	t_NOT
+	t_AND
+	t_OR
+	t_GREATER
+	t_LESS
+	t_GREATER_EQUALS
+	t_LESS_EQUALS
+	t_EQUALS
+	t_EQUALS_STRICT
+	t_NOT_EQUALS
+	t_NOT_EQUALS_STRICT
+	t_PAREN_LEFT
+	t_PAREN_RIGHT
+	t_BRACKET_LEFT
+	t_BRACKET_RIGHT
+	t_CURLY_LEFT
+	t_CURLY_RIGHT
+	t_DOT
+	t_COMMA
+	t_QUESTION
+	t_SEMI
+	t_COLON
+	t_ASSIGN
+	t_LAMBDA
+	t_BITWISE_SHIFT_RIGHT
+	t_BITWISE_SHIFT_LEFT
+	t_BITWISE_SHIFT_RIGHT_ZERO
+	t_SPREAD
 
-	tNUMBER
-	tSTRING_QUOTE
-	tNAME
-	tHEX
-	tREGEXP
-	tESCAPE
-	tSPACE
-	tTEMPLATE_LITERAL_QUOTE
+	t_NUMBER
+	t_STRING_QUOTE
+	t_NAME
+	t_HEX
+	t_REGEXP
+	t_ESCAPE
+	t_SPACE
+	t_TEMPLATE_LITERAL_QUOTE
 )
 
 var tokenTypeNames = []string{
@@ -358,45 +358,45 @@ type operatorInfo struct {
 }
 
 var operatorTable = map[tokenType]operatorInfo{
-	tASSIGN:                          operatorInfo{3, true},
-	tPLUS_ASSIGN:                     operatorInfo{3, true},
-	tMINUS_ASSIGN:                    operatorInfo{3, true},
-	tMULT_ASSIGN:                     operatorInfo{3, true},
-	tDIV_ASSIGN:                      operatorInfo{3, true},
-	tMOD_ASSIGN:                      operatorInfo{3, true},
-	tBITWISE_SHIFT_LEFT_ASSIGN:       operatorInfo{3, true},
-	tBITWISE_SHIFT_RIGHT_ASSIGN:      operatorInfo{3, true},
-	tBITWISE_SHIFT_RIGHT_ZERO_ASSIGN: operatorInfo{3, true},
-	tBITWISE_AND_ASSIGN:              operatorInfo{3, true},
-	tBITWISE_OR_ASSIGN:               operatorInfo{3, true},
-	tBITWISE_XOR_ASSIGN:              operatorInfo{3, true},
-	tOR:                              operatorInfo{5, false},
-	tAND:                             operatorInfo{6, false},
-	tBITWISE_OR:                      operatorInfo{7, false},
-	tBITWISE_XOR:                     operatorInfo{8, false},
-	tBITWISE_AND:                     operatorInfo{9, false},
-	tEQUALS:                          operatorInfo{10, false},
-	tNOT_EQUALS:                      operatorInfo{10, false},
-	tEQUALS_STRICT:                   operatorInfo{10, false},
-	tNOT_EQUALS_STRICT:               operatorInfo{10, false},
-	tLESS:                            operatorInfo{11, false},
-	tLESS_EQUALS:                     operatorInfo{11, false},
-	tGREATER:                         operatorInfo{11, false},
-	tGREATER_EQUALS:                  operatorInfo{11, false},
-	tINSTANCEOF:                      operatorInfo{11, false},
-	tIN:                              operatorInfo{11, false},
-	tBITWISE_SHIFT_LEFT:              operatorInfo{12, false},
-	tBITWISE_SHIFT_RIGHT:             operatorInfo{12, false},
-	tBITWISE_SHIFT_RIGHT_ZERO:        operatorInfo{12, false},
-	tPLUS:  operatorInfo{13, false},
-	tMINUS: operatorInfo{13, false},
-	tMULT:  operatorInfo{14, false},
-	tDIV:   operatorInfo{14, false},
-	tMOD:   operatorInfo{14, false},
-	tEXP:   operatorInfo{15, true},
+	t_ASSIGN:                          operatorInfo{3, true},
+	t_PLUS_ASSIGN:                     operatorInfo{3, true},
+	t_MINUS_ASSIGN:                    operatorInfo{3, true},
+	t_MULT_ASSIGN:                     operatorInfo{3, true},
+	t_DIV_ASSIGN:                      operatorInfo{3, true},
+	t_MOD_ASSIGN:                      operatorInfo{3, true},
+	t_BITWISE_SHIFT_LEFT_ASSIGN:       operatorInfo{3, true},
+	t_BITWISE_SHIFT_RIGHT_ASSIGN:      operatorInfo{3, true},
+	t_BITWISE_SHIFT_RIGHT_ZERO_ASSIGN: operatorInfo{3, true},
+	t_BITWISE_AND_ASSIGN:              operatorInfo{3, true},
+	t_BITWISE_OR_ASSIGN:               operatorInfo{3, true},
+	t_BITWISE_XOR_ASSIGN:              operatorInfo{3, true},
+	t_OR:                              operatorInfo{5, false},
+	t_AND:                             operatorInfo{6, false},
+	t_BITWISE_OR:                      operatorInfo{7, false},
+	t_BITWISE_XOR:                     operatorInfo{8, false},
+	t_BITWISE_AND:                     operatorInfo{9, false},
+	t_EQUALS:                          operatorInfo{10, false},
+	t_NOT_EQUALS:                      operatorInfo{10, false},
+	t_EQUALS_STRICT:                   operatorInfo{10, false},
+	t_NOT_EQUALS_STRICT:               operatorInfo{10, false},
+	t_LESS:                            operatorInfo{11, false},
+	t_LESS_EQUALS:                     operatorInfo{11, false},
+	t_GREATER:                         operatorInfo{11, false},
+	t_GREATER_EQUALS:                  operatorInfo{11, false},
+	t_INSTANCEOF:                      operatorInfo{11, false},
+	t_IN:                              operatorInfo{11, false},
+	t_BITWISE_SHIFT_LEFT:              operatorInfo{12, false},
+	t_BITWISE_SHIFT_RIGHT:             operatorInfo{12, false},
+	t_BITWISE_SHIFT_RIGHT_ZERO:        operatorInfo{12, false},
+	t_PLUS:  operatorInfo{13, false},
+	t_MINUS: operatorInfo{13, false},
+	t_MULT:  operatorInfo{14, false},
+	t_DIV:   operatorInfo{14, false},
+	t_MOD:   operatorInfo{14, false},
+	t_EXP:   operatorInfo{15, true},
 }
 
-type nodeType int
+type nodeType int32
 
 var nodeToString = []string{
 	"n_EMPTY",
@@ -411,6 +411,7 @@ var nodeToString = []string{
 	"n_VARIABLE_DECLARATION",
 	"n_DECLARATOR",
 	"n_STRING_LITERAL",
+	"n_DOUBLE_QUOTE_STRING_LITERAL",
 	"n_NUMBER_LITERAL",
 	"n_BOOL_LITERAL",
 	"n_UNDEFINED",
@@ -484,6 +485,13 @@ var nodeToString = []string{
 	"n_TAGGED_LITERAL",
 	"n_TEMPLATE_LITERAL",
 	"n_THROW_STATEMENT",
+	"n_CONTROL_STATEMENT",
+	"n_YIELD_EXPRESSION",
+	"n_AWAIT_EXPRESSION",
+	"n_ASYNC_FUNCTION",
+	"n_WITH_STATEMENT",
+	"n_LINE_COMMENT",
+	"n_BLOCK_COMMENT",
 }
 
 func (n nodeType) String() string {
@@ -602,4 +610,5 @@ const (
 	n_WITH_STATEMENT
 	n_LINE_COMMENT
 	n_BLOCK_COMMENT
+	n_OBJECT_MEMBER
 )

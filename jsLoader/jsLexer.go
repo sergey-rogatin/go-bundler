@@ -5,24 +5,14 @@ import (
 )
 
 type token struct {
-	tType     tokenType
-	lexeme    string
-	line      int
-	column    int
-	charIndex int
+	tType  tokenType
+	lexeme string
+	line   int32
+	column int32
 }
 
 func (t token) String() string {
 	return fmt.Sprintf("{%v, \"%v\", %v:%v}", t.tType, t.lexeme, t.line, t.column)
-}
-
-func trimQuotesFromString(s string) string {
-	return s[1 : len(s)-1]
-}
-
-func isKeyword(t token) bool {
-	_, ok := keywords[t.lexeme]
-	return ok && t.tType != tNAME
 }
 
 func isNumber(c byte) bool {
@@ -42,24 +32,24 @@ func isLetter(c byte) bool {
 func lex(src []byte) []token {
 	tokens := make([]token, 0)
 	if len(src) == 0 {
-		return append(tokens, token{tEND_OF_INPUT, "", 0, 0, 0})
+		return append(tokens, token{t_END_OF_INPUT, "", 0, 0})
 	}
 
 	lastToken := token{}
 	lastToken.lexeme = ""
-	lastToken.tType = tUNDEFINED
+	lastToken.tType = t_UNDEFINED
 
 	i := 0
 	c := src[i]
 
-	line := 1
-	column := 0
+	var line int32 = 1
+	var column int32 = 0
 
 	eat := func(tType tokenType) {
 		lastToken.tType = tType
 		lastToken.lexeme = lastToken.lexeme + string(c)
 		lastToken.line = line
-		lastToken.column = column - len(lastToken.lexeme)
+		lastToken.column = column - int32(len(lastToken.lexeme))
 
 		i++
 		column++
@@ -77,8 +67,7 @@ func lex(src []byte) []token {
 			lastToken = token{}
 		}
 		lastToken.lexeme = ""
-		lastToken.tType = tUNDEFINED
-		lastToken.charIndex = i
+		lastToken.tType = t_UNDEFINED
 	}
 
 	substr := func(start, end int) string {
@@ -100,63 +89,63 @@ func lex(src []byte) []token {
 		switch {
 
 		case c == '0' && (src[i+1] == 'o' || src[i+1] == 'O'):
-			eat(tNUMBER)
-			eat(tNUMBER)
+			eat(t_NUMBER)
+			eat(t_NUMBER)
 			for isNumber(c) {
-				eat(tNUMBER)
+				eat(t_NUMBER)
 			}
 			end()
 
 		case c == '0' && (src[i+1] == 'b' || src[i+1] == 'B'):
-			eat(tNUMBER)
-			eat(tNUMBER)
+			eat(t_NUMBER)
+			eat(t_NUMBER)
 			for isNumber(c) {
-				eat(tNUMBER)
+				eat(t_NUMBER)
 			}
 			end()
 
 		case c == '0' && (src[i+1] == 'x' || src[i+1] == 'X'):
-			eat(tNUMBER)
-			eat(tNUMBER)
+			eat(t_NUMBER)
+			eat(t_NUMBER)
 			for isHexadecimal(c) {
-				eat(tNUMBER)
+				eat(t_NUMBER)
 			}
 			end()
 
 		case c == '.' && isNumber(src[i+1]):
-			eat(tNUMBER)
+			eat(t_NUMBER)
 			for isNumber(c) {
-				eat(tNUMBER)
+				eat(t_NUMBER)
 			}
 			if c == 'e' || c == 'E' {
-				eat(tNUMBER)
+				eat(t_NUMBER)
 				for isNumber(c) {
-					eat(tNUMBER)
+					eat(t_NUMBER)
 				}
 			}
 			end()
 
 		case isNumber(c):
 			for isNumber(c) {
-				eat(tNUMBER)
+				eat(t_NUMBER)
 			}
 			if c == '.' {
-				eat(tNUMBER)
+				eat(t_NUMBER)
 				for isNumber(c) {
-					eat(tNUMBER)
+					eat(t_NUMBER)
 				}
 			}
 			if c == 'e' || c == 'E' {
-				eat(tNUMBER)
+				eat(t_NUMBER)
 				for isNumber(c) {
-					eat(tNUMBER)
+					eat(t_NUMBER)
 				}
 			}
 			end()
 
 		case isLetter(c):
 			for isLetter(c) || isNumber(c) {
-				eat(tNAME)
+				eat(t_NAME)
 			}
 			if keyword, ok := keywords[lastToken.lexeme]; ok {
 				lastToken.tType = keyword
@@ -164,21 +153,21 @@ func lex(src []byte) []token {
 			end()
 
 		case c == '\'' || c == '"':
-			eat(tSTRING_QUOTE)
+			eat(t_STRING_QUOTE)
 			end()
 
 		case c == '`':
-			eat(tTEMPLATE_LITERAL_QUOTE)
+			eat(t_TEMPLATE_LITERAL_QUOTE)
 			end()
 
 		case c == '\n' || c == '\v' || c == '\f':
-			eat(tNEWLINE)
+			eat(t_NEWLINE)
 			end()
 			line++
 			column = 0
 
 		case c == ' ' || c == '\t':
-			eat(tSPACE)
+			eat(t_SPACE)
 			end()
 
 		default:
@@ -206,13 +195,13 @@ func lex(src []byte) []token {
 				eat(op)
 				end()
 			} else {
-				eat(tANY)
+				eat(t_ANY)
 				end()
 			}
 		}
 	}
 
-	eat(tEND_OF_INPUT)
+	eat(t_END_OF_INPUT)
 	end()
 
 	return tokens

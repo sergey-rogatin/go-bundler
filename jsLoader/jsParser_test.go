@@ -21,6 +21,18 @@ func TestExpressions(t *testing.T) {
 		exp string
 	}{
 		{
+			"a={foo};",
+			"a={foo};",
+		},
+		{
+			"function a(foo = 3){}",
+			"function a(foo=3){}",
+		},
+		{
+			"new a.b().c();",
+			"new a.b().c();",
+		},
+		{
 			`foo + .953e32;`,
 			"foo+.953e32;",
 		},
@@ -711,7 +723,7 @@ func TestReturnStatement(t *testing.T) {
 				context: mapContext,
 				count: 0
 			};`,
-			"return {result:mapResult,keyPrefix:keyPrefix," +
+			"return {result:mapResult,keyPrefix," +
 				"func:mapFunction,context:mapContext,count:0};",
 		},
 	}

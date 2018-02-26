@@ -5,14 +5,48 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/lvl5hm/go-bundler/jsLoader"
+	"github.com/lvl5hm/go-bundler/loaders"
 )
 
-func LoadFile(fileName, bundleDir string) ([]byte, []string, error) {
-	ext := filepath.Ext(fileName)
-	objectName := jsLoader.CreateVarNameFromPath(fileName)
+var Loader urlLoader
 
-	dstFileName := bundleDir + "/" + objectName + ext
+type urlLoader struct{}
+
+func (u urlLoader) BeforeBuild(fileName string, config *loaders.ConfigJSON) {
+	// TODO: check if file exists in destination folder and do not copy
+	ext := filepath.Ext(fileName)
+	objectName := loaders.CreateVarNameFromPath(fileName)
+
+	dstFileName := config.BundleDir + "/" + objectName + ext
+	copyFile(dstFileName, fileName)
+}
+
+func (u urlLoader) LoadAndTransformFile(
+	fileName string,
+	config *loaders.ConfigJSON,
+) ([]byte, []string, error) {
+	return u.TransformFile(fileName, nil, config)
+}
+
+func (u urlLoader) TransformFile(
+	fileName string,
+	src []byte,
+	config *loaders.ConfigJSON,
+) ([]byte, []string, error) {
+	ext := filepath.Ext(fileName)
+	objectName := loaders.CreateVarNameFromPath(fileName)
+
+	res := "moduleFns." + objectName + "=" +
+		"function(){return {exports:'" + objectName + ext + "'}};"
+
+	return []byte(res), nil, nil
+}
+
+func LoadFile(fileName string, config *loaders.ConfigJSON) ([]byte, []string, error) {
+	ext := filepath.Ext(fileName)
+	objectName := loaders.CreateVarNameFromPath(fileName)
+
+	dstFileName := config.BundleDir + "/" + objectName + ext
 	err := copyFile(dstFileName, fileName)
 	if err != nil {
 		return nil, nil, err

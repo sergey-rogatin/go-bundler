@@ -37,16 +37,18 @@ func TestImportTransform(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ast, _ := parseTokens(ps.tokens)
+		a, _ := parseTokens(ps.tokens)
 
-		ctx := context{"a.js", []string{}, false, nil}
-		transAst := modifyImport(ast.children[0], &ctx)
+		ctx := context{}
+		ctx.declaredVars = map[string]ast{}
+		e := environment{"a.js", []string{}, false, nil}
+		transAst := modifyImport(a.children[0], &e, &ctx)
 
 		str := printAst(transAst)
 		cutStr := str
 
 		if cutStr != c.res {
-			t.Errorf("%v", ast)
+			t.Errorf("%v", a)
 			t.Errorf("Expected %s, got %s", c.res, cutStr)
 		}
 	}
@@ -65,15 +67,17 @@ func TestRequireTransform(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ast, _ := parseTokens(ps.tokens)
-		ctx := context{"a.js", []string{}, false, nil}
-		transAst := modifyFunctionCall(ast.children[0], &ctx)
+		a, _ := parseTokens(ps.tokens)
+		ctx := context{}
+		ctx.declaredVars = map[string]ast{}
+		e := environment{"a.js", []string{}, false, nil}
+		transAst := modifyAst(a.children[0], &e, &ctx)
 
 		str := printAst(transAst)
 		cutStr := str
 
 		if cutStr != c.res {
-			t.Errorf("%v", ast)
+			t.Errorf("%v", a)
 			t.Errorf("Expected %s, got %s", c.res, cutStr)
 		}
 	}
@@ -128,15 +132,17 @@ func TestExportTransform(t *testing.T) {
 
 	for _, c := range cases {
 		setParser(c.src)
-		ast, _ := parseTokens(ps.tokens)
-		ctx := context{"a.js", []string{}, false, nil}
-		transAst := modifyExport(ast.children[0], &ctx)
+		a, _ := parseTokens(ps.tokens)
+		ctx := context{}
+		ctx.declaredVars = map[string]ast{}
+		e := environment{"a.js", []string{}, false, nil}
+		transAst := modifyExport(a.children[0], &e, &ctx)
 
 		str := printAst(transAst)
 		cutStr := str
 
 		if cutStr != c.res {
-			t.Errorf("%v", ast)
+			t.Errorf("%v", a)
 			t.Errorf("Expected %s, got %s", c.res, cutStr)
 		}
 	}
@@ -149,21 +155,23 @@ func TestProgramTransform(t *testing.T) {
 	}{
 		{
 			"foo;",
-			"moduleFns.a_js=function(){var module={exports:{},es6:{},hasES6Exports:false};foo;return module};",
+			"moduleFns.a_js=function(){var module={exports:{},es6:{},hasES6Exports:false},exports=module.exports;foo;return module};",
 		},
 	}
 
 	for _, c := range cases {
 		setParser(c.src)
-		ast, _ := parseTokens(ps.tokens)
-		ctx := context{"a.js", []string{}, false, nil}
-		transAst := modifyProgram(ast, &ctx)
+		a, _ := parseTokens(ps.tokens)
+		ctx := context{}
+		ctx.declaredVars = map[string]ast{}
+		e := environment{"a.js", []string{}, false, nil}
+		transAst := modifyAst(a, &e, &ctx)
 
 		str := printAst(transAst)
 		cutStr := str
 
 		if cutStr != c.res {
-			t.Errorf("%v", ast)
+			t.Errorf("%v", a)
 			t.Errorf("%v", transAst)
 			t.Errorf("Expected %s, got %s", c.res, cutStr)
 		}
