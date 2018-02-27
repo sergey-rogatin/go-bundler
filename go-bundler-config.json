@@ -2,16 +2,16 @@
   "Entry": "test/src/index.js",
   "TemplateHTML": "test/index.html",
   "BundleDir": "build",
-  "WatchFiles": false,
+  "WatchFiles": true,
   "Env": {
     "NODE_ENV": "development"
   },
   "DevServer": {
-    "Enable": false,
+    "Enable": true,
     "Port": 8080
   },
   "PermanentCache": {
-    "Enable": false,
+    "Enable": true,
     "Dir": ".go-bundler-cache"
   }
 }

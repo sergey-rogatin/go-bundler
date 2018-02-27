@@ -21,8 +21,8 @@ func TestExpressions(t *testing.T) {
 		exp string
 	}{
 		{
-			"a={foo};",
-			"a={foo};",
+			"({foo = 32} = 3);",
+			"({foo:foo=32}=3);",
 		},
 		{
 			"function a(foo = 3){}",
@@ -661,12 +661,16 @@ func TestObjectPattern(t *testing.T) {
 		exp string
 	}{
 		{
-			"var {} = foo;",
-			"var {}=foo;",
+			"var {[foo]:b}=foo;",
+			"var {[foo]:b}=foo;",
 		},
 		{
 			"var {a:b} = foo;",
 			"var {a:b}=foo;",
+		},
+		{
+			"var {} = foo;",
+			"var {}=foo;",
 		},
 		{
 			"var {a:b=32} = foo;",
@@ -999,6 +1003,10 @@ func TestTemplateLiterals(t *testing.T) {
 		exp string
 	}{
 		{
+			"`fd ${ds}   wje`;",
+			"foo`bar`;",
+		},
+		{
 			"foo`bar`;",
 			"foo`bar`;",
 		},
@@ -1019,7 +1027,7 @@ func TestTemplateLiterals(t *testing.T) {
 		res := printAst(le)
 		if res != c.exp {
 			fmt.Println([]byte(res))
-			fmt.Println([]byte(c.exp))
+			// fmt.Println([]byte(c.exp))
 			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
 		}

@@ -6,12 +6,13 @@ import (
 
 /* TODO:
 
+proper parsing of template literals
 return, yield and other constructions that do not permit newline
 
 check what keywords are allowed to be variable names and object property names
 
 static analysis:
-	replace imported vars in whole module
+	replace exported vars in home module
 	tree-shaking ? read more about it
 
 
@@ -1000,6 +1001,7 @@ func templateLiteral(p *parser) ast {
 	firstQuote := p.getLexeme()
 	value := ""
 	for {
+		fmt.Println(p.tokens[p.i])
 		if p.tokens[p.i].tType == t_ESCAPE {
 			value += p.tokens[p.i].lexeme
 			value += p.tokens[p.i+1].lexeme
@@ -1088,10 +1090,16 @@ func objectPattern(p *parser) ast {
 			continue
 		}
 
+		var key, value ast
+		prevIndex := p.i
 		if p.acceptF(propertyKey) {
-			var key, value ast
-
 			key = p.getNode()
+
+			if key.t == n_OBJECT_KEY {
+				p.i = prevIndex
+				value = p.expectF(assignmentPattern)
+			}
+
 			if p.acceptT(t_COLON) {
 				if p.acceptF(assignmentPattern) {
 					value = p.getNode()
@@ -1099,9 +1107,8 @@ func objectPattern(p *parser) ast {
 					return INVALID_NODE
 				}
 			}
-
-			props = append(props, newNode(n_OBJECT_PROPERTY, "", key, value))
 		}
+		props = append(props, newNode(n_OBJECT_PROPERTY, "", key, value))
 
 		if !p.acceptT(t_COMMA) {
 			if !p.acceptT(t_CURLY_RIGHT) {
