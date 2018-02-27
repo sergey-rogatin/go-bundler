@@ -16,29 +16,8 @@ Install bundler
 ```bash
 npm install --save-dev go-bundler
 ```
-
-Save this in your project folder as `config.json`:
-```json
-{
-  "entry": "src/index.js",
-  "bundleDir": "build",
-  "templateHTML": "index.html",
-  "watchFiles": true,
-  "devServer": {
-    "enable": true,
-    "port": 8080
-  },
-  "env": {
-    "NODE_ENV": "development"
-  },
-  "permanentCache": {
-    "enable": true,
-    "dirName": ".go-bundler-cache"
-  }
-}
-```
-
 Run npm command 
 ```bash
-go-bundler config.json
+go-bundler
 ```
+You will be prompted to answer a couple of questions to generate a config file. You will then be able to edit it manually in `go-bundler-config.json`
