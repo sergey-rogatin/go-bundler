@@ -6,9 +6,6 @@ import (
 
 /* TODO:
 
-proper parsing of template literals
-return, yield and other constructions that do not permit newline
-
 check what keywords are allowed to be variable names and object property names
 
 static analysis:
@@ -101,6 +98,20 @@ func (p *parser) getNextT() token {
 func (p *parser) skipT() {
 	p.i = p.skip(true)
 	p.i++
+}
+
+func (p *parser) acceptTNoNewline(tTypes ...tokenType) bool {
+	i := p.skip(false)
+	tok := p.tokens[i]
+
+	for _, tType := range tTypes {
+		if tok.tType == tType {
+			p.skipT()
+			return true
+		}
+	}
+
+	return false
 }
 
 func (p *parser) acceptT(tTypes ...tokenType) bool {
@@ -460,15 +471,25 @@ func declarationStatement(p *parser) ast {
 
 func expressionStatement(p *parser) ast {
 	if p.acceptT(t_RETURN) {
+		if p.tokens[p.skip(false)].tType == t_NEWLINE {
+			return newNode(n_RETURN_STATEMENT, "")
+		}
 		if p.acceptF(sequenceExpression) {
+			p.expectT(t_SEMI)
 			return newNode(n_RETURN_STATEMENT, "", p.getNode())
 		}
+		p.expectT(t_SEMI)
 		return newNode(n_RETURN_STATEMENT, "")
 	}
 
 	if p.acceptT(t_BREAK, t_CONTINUE) {
 		var label ast
 		word := p.getLexeme()
+
+		if p.tokens[p.skip(false)].tType == t_NEWLINE {
+			return newNode(n_CONTROL_STATEMENT, word, label)
+		}
+
 		if p.acceptF(identifier) {
 			label = p.getNode()
 		}
@@ -547,8 +568,11 @@ func assignmentExpression(p *parser) ast {
 			if p.acceptT(t_MULT) {
 				value = "*"
 			}
-
 			var expr ast
+
+			if p.tokens[p.skip(false)].tType == t_NEWLINE {
+				return newNode(n_YIELD_EXPRESSION, value, expr)
+			}
 
 			if p.getNextT().tType != t_SEMI {
 				expr = p.expectF(assignmentExpression)
@@ -1000,8 +1024,20 @@ func templateLiteral(p *parser) ast {
 	}
 	firstQuote := p.getLexeme()
 	value := ""
+
+	items := []ast{}
 	for {
-		fmt.Println(p.tokens[p.i])
+		if p.tokens[p.i].lexeme == "$" &&
+			p.tokens[p.i+1].tType == t_CURLY_LEFT {
+			items = append(items, newNode(n_TEMPLATE_PART, value))
+			value = ""
+
+			p.i += 2
+			expr := p.expectF(sequenceExpression)
+			p.expectT(t_CURLY_RIGHT)
+			items = append(items, newNode(n_TEMPLATE_EXPRESSION, "", expr))
+		}
+
 		if p.tokens[p.i].tType == t_ESCAPE {
 			value += p.tokens[p.i].lexeme
 			value += p.tokens[p.i+1].lexeme
@@ -1009,6 +1045,7 @@ func templateLiteral(p *parser) ast {
 			continue
 		}
 		if p.tokens[p.i].lexeme == firstQuote {
+			items = append(items, newNode(n_TEMPLATE_PART, value))
 			break
 		}
 		value += p.tokens[p.i].lexeme
@@ -1016,7 +1053,7 @@ func templateLiteral(p *parser) ast {
 	}
 	p.i++
 
-	return newNode(n_TEMPLATE_LITERAL, value)
+	return newNode(n_TEMPLATE_LITERAL, "", items...)
 }
 
 func otherLiteral(p *parser) ast {

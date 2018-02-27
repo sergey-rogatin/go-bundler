@@ -155,7 +155,7 @@ func TestProgramTransform(t *testing.T) {
 	}{
 		{
 			"foo;",
-			"moduleFns.a_js=function(){var module={exports:{},es6:{},hasES6Exports:false},exports=module.exports;foo;return module};",
+			"moduleFns.a_js=function(){var module={exports:{},es6:{},hasES6Exports:false},exports=module.exports;foo;return module;};",
 		},
 	}
 

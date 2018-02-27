@@ -198,6 +198,18 @@ func TestMemberExpression(t *testing.T) {
 		exp string
 	}{
 		{
+			"new (Function())();",
+			"new (Function())();",
+		},
+		{
+			"new foo.bar().baz()();",
+			"new foo.bar().baz()();",
+		},
+		{
+			"foo.delete();",
+			"foo.delete();",
+		},
+		{
 			"foo[a].b().c;",
 			"foo[a].b().c;",
 		},
@@ -708,16 +720,20 @@ func TestReturnStatement(t *testing.T) {
 		exp string
 	}{
 		{
-			"new (Function())();",
-			"new (Function())();",
+			"continue\n foo;",
+			"continue;foo;",
 		},
 		{
-			"new foo.bar().baz()();",
-			"new foo.bar().baz()();",
+			"break\n foo;",
+			"break;foo;",
 		},
 		{
-			"foo.delete();",
-			"foo.delete();",
+			"return\n foo;",
+			"return;foo;",
+		},
+		{
+			"return\n foo;",
+			"return;foo;",
 		},
 		{
 			`return {
@@ -1004,7 +1020,7 @@ func TestTemplateLiterals(t *testing.T) {
 	}{
 		{
 			"`fd ${ds}   wje`;",
-			"foo`bar`;",
+			"`fd ${ds}   wje`;",
 		},
 		{
 			"foo`bar`;",
@@ -1026,7 +1042,7 @@ func TestTemplateLiterals(t *testing.T) {
 
 		res := printAst(le)
 		if res != c.exp {
-			fmt.Println([]byte(res))
+			// fmt.Println([]byte(res))
 			// fmt.Println([]byte(c.exp))
 			t.Errorf("%v", le)
 			t.Errorf("Expected %s, got %s", c.exp, printAst(le))
@@ -1122,6 +1138,10 @@ func TestGeneratorFunction(t *testing.T) {
 		{
 			"a=function*(){yield bar,yield baz;};",
 			"a=function*(){yield bar,yield baz;};",
+		},
+		{
+			"function* foo() {yield\n foo;}",
+			"function* foo(){yield;foo;}",
 		},
 	}
 

@@ -492,6 +492,8 @@ var nodeToString = []string{
 	"n_LINE_COMMENT",
 	"n_BLOCK_COMMENT",
 	"n_OBJECT_MEMBER",
+	"n_TEMPLATE_PART",
+	"n_TEMPLATE_EXPRESSION",
 }
 
 func (n nodeType) String() string {
@@ -611,4 +613,6 @@ const (
 	n_LINE_COMMENT
 	n_BLOCK_COMMENT
 	n_OBJECT_MEMBER
+	n_TEMPLATE_PART
+	n_TEMPLATE_EXPRESSION
 )

@@ -21,7 +21,18 @@ func printAst(n ast) string {
 		return "\"" + n.value + "\""
 
 	case n_TEMPLATE_LITERAL:
-		return "`" + n.value + "`"
+		res := "`"
+		for _, item := range n.children {
+			res += printAst(item)
+		}
+		return res + "`"
+
+	case n_TEMPLATE_PART:
+		return n.value
+
+	case n_TEMPLATE_EXPRESSION:
+		res := "${" + printAst(n.children[0]) + "}"
+		return res
 
 	case n_LAMBDA_EXPRESSION:
 		params := n.children[0]
@@ -408,7 +419,7 @@ func printAst(n ast) string {
 		if len(n.children) > 0 {
 			res += " " + printAst(n.children[0])
 		}
-		return res
+		return res + ";"
 
 	case n_CONDITIONAL_EXPRESSION:
 		test := n.children[0]
